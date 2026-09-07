@@ -1,4 +1,4 @@
--- FTAP V12 SHARED PACK
+-- FTAP V13 SHARED PACK
 local Players=game:GetService("Players")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Workspace=game:GetService("Workspace")
@@ -6,7 +6,7 @@ local LP=Players.LocalPlayer
 local ENV=_G
 if type(getgenv)=="function" then pcall(function() ENV=getgenv() end) end
 local A=ENV.FTAPV10
-if not A then warn("[FTAP V12 SHARED] core first"); return end
+if not A then warn("[FTAP V13 SHARED] core first"); return end
 if A.packs["SHARED"] then return end
 A.registerPack("SHARED")
 
@@ -244,4 +244,93 @@ function S.blobDrop(blob,target,side)
 end
 
 A.setStatus("SHARED pack loaded.")
-print("[FTAP V12 SHARED] READY")
+print("[FTAP V13 SHARED] READY")
+
+
+function S.tryInteract(rootPart, container)
+    if rootPart == nil or container == nil then return false, "missing" end
+
+    local used = false
+    local desc = container:GetDescendants()
+    local i
+
+    -- Prefer real executor interaction helpers when present.
+    if type(fireproximityprompt) == "function" then
+        for i = 1, #desc do
+            if desc[i]:IsA("ProximityPrompt") then
+                local ok = pcall(function()
+                    fireproximityprompt(desc[i])
+                end)
+                if ok then used = true end
+            end
+        end
+    end
+
+    if type(fireclickdetector) == "function" then
+        for i = 1, #desc do
+            if desc[i]:IsA("ClickDetector") then
+                local ok = pcall(function()
+                    fireclickdetector(desc[i])
+                end)
+                if ok then used = true end
+            end
+        end
+    end
+
+    local touchPart = nil
+
+    for i = 1, #desc do
+        local d = desc[i]
+
+        if d:IsA("BasePart") then
+            local n = string.lower(d.Name)
+
+            if string.find(n, "handle", 1, true) or
+               string.find(n, "seat", 1, true) or
+               string.find(n, "button", 1, true) then
+                touchPart = d
+                break
+            end
+        end
+    end
+
+    if touchPart == nil and container:IsA("BasePart") then
+        touchPart = container
+    end
+
+    if touchPart ~= nil then
+        if type(firetouchinterest) == "function" then
+            local ok = pcall(function()
+                firetouchinterest(rootPart, touchPart, 0)
+                task.wait(0.03)
+                firetouchinterest(rootPart, touchPart, 1)
+            end)
+
+            if ok then used = true end
+        end
+    end
+
+    return used, used and "executor interaction" or "physical fallback needed"
+end
+
+function S.hideGuardToy(toy)
+    if toy == nil then return end
+
+    local d = toy:GetDescendants()
+    local i
+
+    for i = 1, #d do
+        local p = d[i]
+
+        if p:IsA("BasePart") then
+            pcall(function()
+                p.CanCollide = false
+                p.CanTouch = false
+                p.CanQuery = false
+                p.LocalTransparencyModifier = 1
+            end)
+        end
+    end
+end
+
+print("[FTAP V13 SHARED] READY")

@@ -1,11 +1,11 @@
--- FTAP V12 GRAB MODS PACK
+-- FTAP V13 GRAB MODS PACK
 local RunService=game:GetService("RunService")
 local Workspace=game:GetService("Workspace")
 local Debris=game:GetService("Debris")
 local ENV=_G
 if type(getgenv)=="function" then pcall(function() ENV=getgenv() end) end
 local A=ENV.FTAPV10
-if not A or not A.shared then warn("[FTAP V12 GRAB] core+shared first"); return end
+if not A or not A.shared then warn("[FTAP V13 GRAB] core+shared first"); return end
 if A.packs["GRAB"] then return end
 A.registerPack("GRAB")
 local S=A.shared
@@ -144,4 +144,4 @@ A.addButton(page,"Cleanup anchored objects",function()
 end)
 
 A.setStatus("GRAB MODS pack loaded.")
-print("[FTAP V12 GRAB] READY")
+print("[FTAP V13 GRAB] READY")

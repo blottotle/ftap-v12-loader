@@ -1,4 +1,4 @@
--- FTAP V12 REMOTE MODULAR CORE
+-- FTAP V13 REMOTE MODULAR CORE
 -- Small compatibility-first GUI shell. Execute this FIRST.
 -- No HTTP/loadstring/debug/getgc/hooks. No PlaceId lock.
 
@@ -10,7 +10,7 @@ local Workspace = game:GetService("Workspace")
 
 local LP = Players.LocalPlayer
 if LP == nil then
-    warn("[FTAP V12 CORE] LocalPlayer missing")
+    warn("[FTAP V13 CORE] LocalPlayer missing")
     return
 end
 
@@ -28,13 +28,16 @@ end
 local API = {}
 ENV.FTAPV10 = API
 
-API.version = "12.0-remote-modular"
+API.version = "13.0-remote-modular"
 API.packs = {}
 API.toggleState = {}
 API.toggleBusy = {}
 API.toggleLabels = {}
 API.toggleButtons = {}
+API.toggleBadges = {}
 API.toggleStops = {}
+API.toggleLastTap = {}
+API.toggleDebounceSeconds = 0.45
 
 local function getCharacter()
     local c = LP.Character
@@ -162,7 +165,7 @@ API.COLORS = COLORS
 
 local pg = LP:FindFirstChild("PlayerGui") or LP:WaitForChild("PlayerGui", 8)
 if pg == nil then
-    warn("[FTAP V12 CORE] PlayerGui missing")
+    warn("[FTAP V13 CORE] PlayerGui missing")
     return
 end
 
@@ -201,7 +204,7 @@ title.TextColor3 = COLORS.TEXT
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
-title.Text = "FTAP V12 REMOTE MODULAR CORE"
+title.Text = "FTAP V13 REMOTE MODULAR CORE"
 
 local subtitle = Instance.new("TextLabel")
 subtitle.Parent = top
@@ -298,7 +301,7 @@ API.pageHost = host
 
 local function setStatus(text)
     status.Text = tostring(text)
-    print("[FTAP V12] " .. tostring(text))
+    print("[FTAP V13] " .. tostring(text))
 end
 API.setStatus = setStatus
 
@@ -417,15 +420,26 @@ end
 local function renderToggle(key)
     local b = API.toggleButtons[key]
     local label = API.toggleLabels[key]
+    local badge = API.toggleBadges[key]
 
     if b == nil or label == nil then return end
 
     if API.toggleState[key] then
-        b.Text = "   " .. label .. " [ON]"
+        b.Text = "   DISABLE  " .. label
         b.BackgroundColor3 = COLORS.ON
+
+        if badge ~= nil then
+            badge.Text = "ENABLED"
+            badge.TextColor3 = Color3.fromRGB(145, 255, 180)
+        end
     else
-        b.Text = "   " .. label .. " [OFF]"
+        b.Text = "   ENABLE   " .. label
         b.BackgroundColor3 = COLORS.CARD
+
+        if badge ~= nil then
+            badge.Text = "DISABLED"
+            badge.TextColor3 = COLORS.MUTED
+        end
     end
 end
 API.renderToggle = renderToggle
@@ -434,20 +448,45 @@ function API.addToggle(page, key, label, onEnable, onDisable)
     API.toggleState[key] = false
     API.toggleBusy[key] = false
     API.toggleLabels[key] = label
+    API.toggleLastTap[key] = 0
 
     local b = Instance.new("TextButton")
     b.Parent = page
-    b.Size = UDim2.new(1, -2, 0, 36)
+    b.Size = UDim2.new(1, -2, 0, 40)
     b.BackgroundColor3 = COLORS.CARD
     b.TextColor3 = COLORS.TEXT
     b.TextXAlignment = Enum.TextXAlignment.Left
     b.Font = Enum.Font.GothamSemibold
     b.TextSize = 9
+    b.AutoButtonColor = true
+
+    local badge = Instance.new("TextLabel")
+    badge.Parent = b
+    badge.AnchorPoint = Vector2.new(1, 0.5)
+    badge.Position = UDim2.new(1, -8, 0.5, 0)
+    badge.Size = UDim2.new(0, 76, 0, 20)
+    badge.BackgroundTransparency = 1
+    badge.TextXAlignment = Enum.TextXAlignment.Right
+    badge.Font = Enum.Font.GothamBold
+    badge.TextSize = 8
+
     API.toggleButtons[key] = b
+    API.toggleBadges[key] = badge
     renderToggle(key)
 
     b.Activated:Connect(function()
+        local now = os.clock()
+        local last = API.toggleLastTap[key] or 0
+
+        -- Waydroid/fake-touch can generate two Activated events for one tap.
+        -- Ignore the duplicate so a toggle cannot instantly go ON -> OFF.
+        if now - last < API.toggleDebounceSeconds then
+            return
+        end
+
+        API.toggleLastTap[key] = now
         API.touchFeature(label)
+
         if API.toggleBusy[key] then return end
         API.toggleBusy[key] = true
 
@@ -464,16 +503,30 @@ function API.addToggle(page, key, label, onEnable, onDisable)
             if not ok or result == false then
                 API.toggleState[key] = false
                 renderToggle(key)
-                if not ok then setStatus(label .. " failed: " .. tostring(result)) end
+
+                if not ok then
+                    setStatus(label .. " failed: " .. tostring(result))
+                elseif result == false then
+                    setStatus(label .. " could not enable.")
+                end
             end
         else
-            if onDisable ~= nil then pcall(onDisable) end
+            if onDisable ~= nil then
+                pcall(onDisable)
+            end
         end
 
+        renderToggle(key)
         API.toggleBusy[key] = false
     end)
 
     return b
+end
+
+function API.forceToggle(key, value)
+    if API.toggleState[key] == nil then return end
+    API.toggleState[key] = value and true or false
+    renderToggle(key)
 end
 
 function API.addSlider(page, label, minValue, maxValue, step, initial, callback)
@@ -658,7 +711,7 @@ API.addSection(CORE, "V12 remote modular core",
 
 API.addButton(CORE, "EXECUTION TEST", function()
     setStatus("V10 CORE EXECUTION TEST PASSED")
-    print("FTAP_V12_CORE_EXECUTION_TEST_PASSED")
+    print("FTAP_V13_CORE_EXECUTION_TEST_PASSED")
 end)
 
 API.addButton(CORE, "RECON", function()
@@ -747,4 +800,4 @@ close.Activated:Connect(API.shutdown)
 
 API.showPage("CORE")
 setStatus("V10 CORE loaded. Run EXECUTION TEST, then execute feature pack files.")
-print("[FTAP V12 CORE] READY")
+print("[FTAP V13 CORE] READY")
