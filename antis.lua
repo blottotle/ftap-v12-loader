@@ -1,465 +1,378 @@
--- FTAP V13 ANTIS PACK
+-- FTAP V14 ANTIS - SOURCE FAMILY REBUILD
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local Workspace=game:GetService("Workspace")
-
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local LP=Players.LocalPlayer
+
 local ENV=_G
 if type(getgenv)=="function" then pcall(function() ENV=getgenv() end) end
-
 local A=ENV.FTAPV10
-if not A or not A.shared then warn("[FTAP V13 ANTIS] core+shared first"); return end
+if not A or not A.shared then warn("[FTAP V14 ANTIS] core+shared first"); return end
 if A.packs["ANTIS"] then return end
 A.registerPack("ANTIS")
 
 local S=A.shared
 local page=A.makePage("ANTIS")
-local savedVoid=Workspace.FallenPartsDestroyHeight
-local effectsSaved={}
 
-local function setAnchored(character,value)
-    if not character then return end
-    local k=character:GetChildren()
+local function setPartsAnchored(c,v)
+    if not c then return end
+    local k=c:GetChildren()
     local i
     for i=1,#k do
-        if k[i]:IsA("BasePart") then
-            pcall(function() k[i].Anchored=value end)
+        if k[i]:IsA("BasePart") then pcall(function() k[i].Anchored=v end) end
+    end
+end
+
+local function disableRagdollJoints(c)
+    if not c then return end
+    local k=c:GetChildren()
+    local i
+    for i=1,#k do
+        local p=k[i]
+        if p:IsA("BasePart") and p.Name~="Head" then
+            local ball=p:FindFirstChild("BallSocketConstraint")
+            if ball then pcall(function() ball.Enabled=false end) end
+            local limb=p:FindFirstChild("RagdollLimbPart")
+            local weld=limb and limb:FindFirstChild("WeldConstraint")
+            if weld then pcall(function() weld.Enabled=false end) end
         end
     end
 end
 
-local function stopLocalVelocity()
-    local c,h,r=A.getCharacter()
-    if r then
-        pcall(function()
-            r.AssemblyLinearVelocity=Vector3.new(0,0,0)
-            r.AssemblyAngularVelocity=Vector3.new(0,0,0)
+A.addSection(page,"ANTI GRAB SOURCE MATRIX",
+    "1=Vovange strong event-driven. 2=Defiant/Critcl IsHeld. 3=freeze-position fallback. Test separately.")
+
+A.addToggle(page,"ag_vovange","Anti Grab 1 - VOVANGE STRONG",function()
+    local connections={}
+    local processing=false
+
+    local function disconnectAll()
+        local i
+        for i=1,#connections do pcall(function() connections[i]:Disconnect() end) end
+        connections={}
+    end
+    A.toggleStops["ag_vovange"]=disconnectAll
+
+    local function process(c,h,root,head)
+        if processing or not A.toggleState["ag_vovange"] then return end
+        processing=true
+        task.spawn(function()
+            local refs=S.getRefs()
+            pcall(function() h.Sit=false end)
+            S.fire1(refs.Struggle,LP)
+            disableRagdollJoints(c)
+            root.Anchored=true
+
+            while A.toggleState["ag_vovange"] do
+                local held=LP:FindFirstChild("IsHeld")
+                local owner=head and head:FindFirstChild("PartOwner")
+                if not owner and not (held and held.Value) then break end
+
+                S.fire1(refs.Struggle,LP)
+                S.fire2(refs.RagdollRemote,root,0)
+
+                local md=h.MoveDirection
+                if held and held.Value and md.Magnitude>0 then
+                    pcall(function() root.CFrame=root.CFrame+md*0.43 end)
+                end
+
+                RunService.Heartbeat:Wait()
+            end
+
+            pcall(function() root.Anchored=false end)
+            processing=false
         end)
     end
-end
 
-A.addSection(page,"Anti Grab",
-    "AUTO is aggressive. Source 1 mirrors old Cosmic exactly. Source 2 mirrors Critcl's rapid IsHeld struggle loop.")
+    local function setup(c)
+        if not c then return end
+        local h=c:FindFirstChildOfClass("Humanoid") or c:WaitForChild("Humanoid",5)
+        local root=c:FindFirstChild("HumanoidRootPart") or c:WaitForChild("HumanoidRootPart",5)
+        local head=c:FindFirstChild("Head") or c:WaitForChild("Head",5)
+        if not h or not root or not head then return end
 
-A.addToggle(page,"anti_grab_auto","Anti Grab AUTO aggressive",function()
-    task.spawn(function()
-        local anchored=false
+        disableRagdollJoints(c)
 
-        while A.toggleState["anti_grab_auto"] do
-            local refs=S.getRefs()
-            local c,h,root=A.getCharacter()
+        connections[#connections+1]=head.ChildAdded:Connect(function(x)
+            if x.Name=="PartOwner" then process(c,h,root,head) end
+        end)
 
-            if c and root then
-                local held=LP:FindFirstChild("IsHeld")
-                local head=c:FindFirstChild("Head")
-                local owner=head and head:FindFirstChild("PartOwner")
-                local active=(held and held.Value==true) or owner~=nil
-
-                if active then
-                    S.fire0(refs.Struggle)
-                    S.fire1(refs.Struggle,LP)
-                    S.fire0(refs.StopAllVelocity)
-                    stopLocalVelocity()
-                    setAnchored(c,true)
-                    anchored=true
-                elseif anchored then
-                    setAnchored(c,false)
-                    anchored=false
-                end
-            end
-
-            task.wait(0.001)
+        local rag=h:FindFirstChild("Ragdolled")
+        if rag then
+            connections[#connections+1]=rag.Changed:Connect(function()
+                if rag.Value then disableRagdollJoints(c) end
+            end)
         end
 
-        setAnchored(LP.Character,false)
+        local weld=root:FindFirstChild("WeldHRP")
+        if weld then
+            connections[#connections+1]=weld.Changed:Connect(function()
+                local ok,en=pcall(function() return weld.Enabled end)
+                if ok and en then
+                    pcall(function()
+                        h.Sit=false
+                        h.AutoRotate=true
+                        h.HipHeight=1
+                    end)
+                end
+            end)
+        end
+
+        if head:FindFirstChild("PartOwner") then process(c,h,root,head) end
+    end
+
+    setup(LP.Character)
+    connections[#connections+1]=LP.CharacterAdded:Connect(function(c)
+        task.wait(0.2)
+        setup(c)
     end)
 
     return true
 end,function()
-    setAnchored(LP.Character,false)
+    if A.toggleStops["ag_vovange"] then
+        A.toggleStops["ag_vovange"]()
+        A.toggleStops["ag_vovange"]=nil
+    end
+    setPartsAnchored(LP.Character,false)
 end)
 
-A.addToggle(page,"anti_grab_cosmic","Anti Grab 1 - COSMIC exact",function()
+A.addToggle(page,"ag_defiant","Anti Grab 2 - DEFIANT/CRITCL EXACT",function()
     task.spawn(function()
-        while A.toggleState["anti_grab_cosmic"] do
-            local refs=S.getRefs()
+        while A.toggleState["ag_defiant"] do
             local c,h,root=A.getCharacter()
-
-            if c and c:FindFirstChild("Head") then
-                local owner=c.Head:FindFirstChild("PartOwner")
-
-                if owner then
-                    S.fire0(refs.Struggle)
-                    S.fire0(refs.StopAllVelocity)
-                    setAnchored(c,true)
-
-                    local held=LP:FindFirstChild("IsHeld")
-
-                    while A.toggleState["anti_grab_cosmic"] and held and held.Value==true do
-                        task.wait()
-                    end
-
-                    setAnchored(c,false)
-                end
-            end
-
-            RunService.Heartbeat:Wait()
-        end
-
-        setAnchored(LP.Character,false)
-    end)
-
-    return true
-end,function()
-    setAnchored(LP.Character,false)
-end)
-
-A.addToggle(page,"anti_grab_critcl","Anti Grab 2 - CRITCL rapid",function()
-    task.spawn(function()
-        while A.toggleState["anti_grab_critcl"] do
-            local refs=S.getRefs()
             local held=LP:FindFirstChild("IsHeld")
-
-            if held and held.Value==true then
-                local c=LP.Character
-                setAnchored(c,true)
-
-                while A.toggleState["anti_grab_critcl"] and held.Value==true do
+            if c and root and held and held.Value then
+                root.Anchored=true
+                local refs=S.getRefs()
+                while A.toggleState["ag_defiant"] and held.Value do
                     S.fire1(refs.Struggle,LP)
                     task.wait(0.001)
                 end
-
-                setAnchored(c,false)
+                root.Anchored=false
             end
-
-            task.wait(0.002)
+            task.wait()
         end
-
-        setAnchored(LP.Character,false)
+        local c,h,root=A.getCharacter()
+        if root then root.Anchored=false end
     end)
-
     return true
 end,function()
-    setAnchored(LP.Character,false)
+    local c,h,root=A.getCharacter()
+    if root then root.Anchored=false end
 end)
 
-A.addSection(page,"Anti Kick",
-    "Rescue is Cosmic-source behavior. Guard toy is placed inside lower torso, hidden locally, and made non-queryable so it is much harder to grab.")
-
-local guardToy=nil
-local guardName=nil
-
-local function getOrSpawnGuardToy()
-    local toy,name=S.findAnyWeapon()
-
-    if toy then
-        return toy,name
-    end
-
-    local c,h,root=A.getCharacter()
-    local torso=c and (c:FindFirstChild("Torso") or c:FindFirstChild("LowerTorso"))
-
-    if not torso then return nil,nil end
-
-    local ok
-    ok,toy=S.spawnToy(
-        "NinjaKunai",
-        torso.CFrame*CFrame.new(0,-0.7,0),
-        Vector3.new(90,90,0)
-    )
-    name="NinjaKunai"
-
-    if not toy then
-        ok,toy=S.spawnToy(
-            "NinjaShuriken",
-            torso.CFrame*CFrame.new(0,-0.7,0),
-            Vector3.new(90,90,0)
-        )
-        name="NinjaShuriken"
-    end
-
-    return toy,name
-end
-
-local function ensureInternalGuard()
-    local refs=S.getRefs()
-    local c,h,root=A.getCharacter()
-
-    if not c or not root then
-        return false,"character missing"
-    end
-
-    local torso=c:FindFirstChild("Torso") or c:FindFirstChild("LowerTorso") or root
-    local toy,name=getOrSpawnGuardToy()
-
-    if not toy then
-        return false,"Kunai/Shuriken spawn unavailable"
-    end
-
-    guardToy=toy
-    guardName=name
-
-    local sticky=toy:FindFirstChild("StickyPart",true)
-
-    if not sticky then
-        return false,name.." StickyPart missing"
-    end
-
-    local weld=sticky:FindFirstChild("StickyWeld")
-    local attached=weld and (weld.Part1==torso or weld.Part0==torso)
-
-    if not attached and refs.StickyPartEvent then
-        -- Lower-torso internal placement. If the server rejects Torso,
-        -- fallback to source-like Right Leg while still hiding/query-disabling it.
-        local ok=S.fire3(
-            refs.StickyPartEvent,
-            sticky,
-            torso,
-            CFrame.new(0,-0.75,0)*CFrame.Angles(math.rad(-90),0,math.rad(180))
-        )
-
-        task.wait(0.05)
-        weld=sticky:FindFirstChild("StickyWeld")
-        attached=weld and (weld.Part1==torso or weld.Part0==torso)
-
-        if not attached then
-            local leg=c:FindFirstChild("Right Leg")
-
-            if leg then
-                S.fire3(
-                    refs.StickyPartEvent,
-                    sticky,
-                    leg,
-                    CFrame.new(0,0.75,0)*CFrame.Angles(math.rad(-100),0,math.rad(180))
-                )
-            end
-        end
-    end
-
-    S.hideGuardToy(toy)
-    return true,name
-end
-
-A.addToggle(page,"anti_kick","Anti Kick + INTERNAL guard",function()
+A.addToggle(page,"ag_freeze","Anti Grab 3 - RAGALIC FREEZE JOINT",function()
     task.spawn(function()
-        while A.toggleState["anti_kick"] do
-            ensureInternalGuard()
-
-            local refs=S.getRefs()
+        local align=nil
+        local att=nil
+        while A.toggleState["ag_freeze"] do
             local c,h,root=A.getCharacter()
+            local refs=S.getRefs()
+            local held=LP:FindFirstChild("IsHeld")
+            local head=c and c:FindFirstChild("Head")
+            local active=(held and held.Value) or (head and head:FindFirstChild("PartOwner"))
 
-            if c and h and root then
-                local fpp=root:FindFirstChild("FirePlayerPart")
-                local owner=fpp and fpp:FindFirstChild("PartOwner")
+            if root and active then
+                if not align or not align.Parent then
+                    att=Instance.new("Attachment")
+                    att.Name="FTAPV14FreezeAttachment"
+                    att.Parent=root
 
-                if owner and tostring(owner.Value)~=LP.Name then
-                    S.fire2(refs.RagdollRemote,root,0)
-                    task.wait(0.1)
-                    S.fire0(refs.Struggle)
-                    S.fire1(refs.Struggle,LP)
-
-                    pcall(function()
-                        h.PlatformStand=false
-                        h.Sit=false
-                        h:ChangeState(Enum.HumanoidStateType.GettingUp)
-                    end)
+                    align=Instance.new("AlignPosition")
+                    align.Name="FTAPV14FreezeJoint"
+                    align.Mode=Enum.PositionAlignmentMode.OneAttachment
+                    align.MaxForce=1000000
+                    align.MaxVelocity=0
+                    align.Responsiveness=200
+                    align.Attachment0=att
+                    align.Position=root.Position
+                    align.Parent=root
                 end
+                root.AssemblyLinearVelocity=Vector3.zero
+                root.AssemblyAngularVelocity=Vector3.zero
+                S.fire1(refs.Struggle,LP)
+                S.fire0(refs.StopAllVelocity)
+            else
+                if align then pcall(function() align:Destroy() end); align=nil end
+                if att then pcall(function() att:Destroy() end); att=nil end
             end
-
-            task.wait(0.08)
+            RunService.Heartbeat:Wait()
         end
+        if align then pcall(function() align:Destroy() end) end
+        if att then pcall(function() att:Destroy() end) end
     end)
-
     return true
 end,function() end)
 
-A.addButton(page,"Guard weapon RECON",function()
-    if not guardToy then
-        local ok,name=ensureInternalGuard()
-        if not ok then return A.setStatus("Guard failed: "..tostring(name)) end
+A.addSection(page,"ANTI KICK SOURCE MATRIX",
+    "Primary is SAHAR FirePlayerPart guard. It is the source that actually places the sticky weapon inside the character kick hitbox.")
+
+local guard=nil
+
+local function hideGuard(toy)
+    if not toy then return end
+    local d=toy:GetDescendants()
+    local i
+    for i=1,#d do
+        if d[i]:IsA("BasePart") then
+            pcall(function()
+                d[i].CanTouch=false
+                d[i].CanCollide=false
+                d[i].CanQuery=false
+                d[i].LocalTransparencyModifier=1
+            end)
+        end
+    end
+end
+
+local function spawnGuard()
+    local c,h,root=A.getCharacter()
+    if not root then return nil end
+
+    local existingKunai=S.findOwnToy("NinjaKunai")
+    if existingKunai and existingKunai:FindFirstChild("StickyPart",true) then
+        return existingKunai
     end
 
-    local sticky=guardToy and guardToy:FindFirstChild("StickyPart",true)
-    local weld=sticky and sticky:FindFirstChild("StickyWeld")
-    local part="nil"
-
-    if weld then
-        if weld.Part1 then part=weld.Part1.Name
-        elseif weld.Part0 then part=weld.Part0.Name end
+    local existingShur=S.findOwnToy("NinjaShuriken")
+    if existingShur and existingShur:FindFirstChild("StickyPart",true) then
+        return existingShur
     end
 
-    A.setStatus(
-        "guard="..tostring(guardName)..
-        " sticky="..tostring(sticky~=nil)..
-        " attached="..part
+    local ok,toy=S.spawnToy("NinjaShuriken",root.CFrame*CFrame.new(0,12,20),Vector3.zero)
+    if ok then return toy end
+
+    ok,toy=S.spawnToy("NinjaKunai",root.CFrame*CFrame.new(0,12,20),Vector3.new(90,90,0))
+    if ok then return toy end
+    return nil
+end
+
+local function attachFirePlayerPart(toy)
+    local refs=S.getRefs()
+    local c,h,root=A.getCharacter()
+    if not toy or not root or not refs.StickyPartEvent then return false end
+
+    local sticky=toy:FindFirstChild("StickyPart",true)
+    if not sticky then return false end
+
+    local sound=toy:FindFirstChild("SoundPart",true)
+    if sound and refs.SetNetworkOwner then
+        local po=sound:FindFirstChild("PartOwner")
+        if not po or tostring(po.Value)~=LP.Name then
+            S.fire2(refs.SetNetworkOwner,sound,sound.CFrame)
+        end
+    end
+
+    local firePart=root:FindFirstChild("FirePlayerPart") or root:WaitForChild("FirePlayerPart",2)
+    if not firePart then return false end
+
+    S.fire3(
+        refs.StickyPartEvent,
+        sticky,
+        firePart,
+        CFrame.new(0,0,0)*CFrame.Angles(0,math.rad(90),math.rad(90))
     )
-end)
+    hideGuard(toy)
+    return true
+end
 
-A.addSection(page,"Anti Blob / Explosion / Void / Fire",nil)
-
-A.addToggle(page,"anti_blob","Anti Blobman SAFE",function()
+A.addToggle(page,"ak_sahar","Anti Kick 1 - SAHAR FIREPLAYERPART",function()
     task.spawn(function()
-        while A.toggleState["anti_blob"] do
-            local own=S.mountedBlob()
-            local d=Workspace:GetDescendants()
-            local i,j
+        while A.toggleState["ak_sahar"] do
+            if not guard or not guard.Parent then
+                guard=spawnGuard()
+            end
 
-            for i=1,#d do
-                local b=d[i]
+            if guard then
+                attachFirePlayerPart(guard)
+                local sticky=guard:FindFirstChild("StickyPart",true)
+                local root=select(3,A.getCharacter())
 
-                if b:IsA("Model") and b.Name=="CreatureBlobman" and b~=own then
-                    local bd=b:GetDescendants()
-
-                    for j=1,#bd do
-                        if bd[j].Name=="AttachPlayer" then
-                            pcall(function() bd[j]:Destroy() end)
-                        elseif bd[j]:IsA("BasePart") then
-                            pcall(function() bd[j].Massless=false end)
-                        end
-                    end
+                if not sticky or not root or (sticky.Position-root.Position).Magnitude>=20 then
+                    S.destroyToy(guard)
+                    guard=nil
                 end
             end
 
+            task.wait(0.3)
+        end
+    end)
+    return true
+end,function()
+    if guard then S.destroyToy(guard); guard=nil end
+end)
+
+A.addToggle(page,"ak_wncly","Anti Kick 2 - WNCLY KUNAI THIGH",function()
+    task.spawn(function()
+        local toy=nil
+        while A.toggleState["ak_wncly"] do
+            local c,h,root=A.getCharacter()
+            local torso=c and c:FindFirstChild("Torso")
+            if torso and (not toy or not toy.Parent) then
+                local cf=torso.CFrame*CFrame.new(-0.5,-torso.Size.Y/2,0)*CFrame.Angles(math.rad(-100),0,0)
+                local ok
+                ok,toy=S.spawnToy("NinjaKunai",cf,Vector3.new(90,90,0))
+                if toy then hideGuard(toy) end
+            end
+            task.wait()
+        end
+    end)
+    return true
+end,function() end)
+
+A.addToggle(page,"ak_pencil","Anti Kick 3 - PENCIL TORSO FALLBACK",function()
+    task.spawn(function()
+        local toy=nil
+        while A.toggleState["ak_pencil"] do
+            local c,h,root=A.getCharacter()
+            local torso=c and c:FindFirstChild("Torso")
+            local refs=S.getRefs()
+            if torso and root then
+                if not toy or not toy.Parent then
+                    toy=S.findOwnToy("ToolPencil")
+                    if not toy then
+                        local ok
+                        ok,toy=S.spawnToy("ToolPencil",root.CFrame*CFrame.new(0,3,-4),Vector3.zero)
+                    end
+                end
+                local sticky=toy and toy:FindFirstChild("StickyPart",true)
+                if sticky and refs.StickyPartEvent then
+                    S.fire3(refs.StickyPartEvent,sticky,torso,CFrame.new(0,-1,0)*CFrame.Angles(0,math.pi,0))
+                    hideGuard(toy)
+                end
+            end
             task.wait(0.2)
         end
     end)
-
     return true
 end,function() end)
 
-A.addToggle(page,"anti_explosion","Anti Explosion consensus",function()
-    local function neut(x)
-        if x:IsA("Explosion") then
-            pcall(function() x.BlastPressure=0 end)
-        end
-    end
+A.addSection(page,"SOURCE-BACKED LOCAL ANTIS",nil)
 
-    local d=Workspace:GetDescendants()
-    local i
-    for i=1,#d do neut(d[i]) end
-
-    local conn=Workspace.DescendantAdded:Connect(neut)
-    A.toggleStops["anti_explosion"]=function() conn:Disconnect() end
-
-    task.spawn(function()
-        local did=false
-
-        while A.toggleState["anti_explosion"] do
-            local c,h,root=A.getCharacter()
-            local on=false
-
-            if c and h then
-                local rag=h:FindFirstChild("Ragdolled")
-                local arm=c:FindFirstChild("Right Arm")
-
-                on=(rag and rag.Value==true) or
-                   (arm and arm:FindFirstChild("RagdollLimbPart")~=nil)
-
-                setAnchored(c,on)
-                did=on
-            end
-
-            task.wait(0.01)
-        end
-
-        if did then setAnchored(LP.Character,false) end
-    end)
-
+A.addToggle(page,"anti_lag_exact","Anti Lag - CharacterAndBeamMove.Disabled",function()
+    local ps=LP:FindFirstChild("PlayerScripts")
+    local s=ps and ps:FindFirstChild("CharacterAndBeamMove")
+    if not s then A.setStatus("CharacterAndBeamMove missing."); return false end
+    pcall(function() s.Disabled=true end)
     return true
 end,function()
-    if A.toggleStops["anti_explosion"] then
-        A.toggleStops["anti_explosion"]()
-        A.toggleStops["anti_explosion"]=nil
-    end
-
-    setAnchored(LP.Character,false)
+    local ps=LP:FindFirstChild("PlayerScripts")
+    local s=ps and ps:FindFirstChild("CharacterAndBeamMove")
+    if s then pcall(function() s.Disabled=false end) end
 end)
 
-A.addToggle(page,"anti_void","Anti Void",function()
-    pcall(function() Workspace.FallenPartsDestroyHeight=0/0 end)
-
-    task.spawn(function()
-        local safe=nil
-
-        while A.toggleState["anti_void"] do
-            local c,h,r=A.getCharacter()
-
-            if r then
-                if r.Position.Y>-50 and h and h.FloorMaterial~=Enum.Material.Air then
-                    safe=r.CFrame
-                end
-
-                if r.Position.Y<-100 and safe then
-                    r.AssemblyLinearVelocity=Vector3.new(0,0,0)
-                    r.CFrame=safe+Vector3.new(0,4,0)
-                end
-            end
-
-            task.wait(0.05)
-        end
-    end)
-
+A.addToggle(page,"anti_sticky_exact","Anti Sticky - StickyPartsTouchDetection.Disabled",function()
+    local ps=LP:FindFirstChild("PlayerScripts")
+    local s=ps and ps:FindFirstChild("StickyPartsTouchDetection")
+    if not s then A.setStatus("StickyPartsTouchDetection missing."); return false end
+    pcall(function() s.Disabled=true end)
     return true
 end,function()
-    pcall(function() Workspace.FallenPartsDestroyHeight=savedVoid end)
+    local ps=LP:FindFirstChild("PlayerScripts")
+    local s=ps and ps:FindFirstChild("StickyPartsTouchDetection")
+    if s then pcall(function() s.Disabled=false end) end
 end)
 
-A.addToggle(page,"anti_fire","Anti Fire local",function()
-    task.spawn(function()
-        while A.toggleState["anti_fire"] do
-            local c,h,r=A.getCharacter()
-
-            if r then
-                local d=r:GetDescendants()
-                local i
-
-                for i=1,#d do
-                    local x=d[i]
-
-                    if x.Name=="FireLight" or
-                       x.Name=="FireParticleEmitter" or
-                       x:IsA("Fire") then
-                        pcall(function() x:Destroy() end)
-                    end
-                end
-            end
-
-            task.wait(0.05)
-        end
-    end)
-
-    return true
-end,function() end)
-
-A.addToggle(page,"anti_lag_local","Anti Lag local effects",function()
-    task.spawn(function()
-        while A.toggleState["anti_lag_local"] do
-            local d=Workspace:GetDescendants()
-            local i
-
-            for i=1,#d do
-                local x=d[i]
-
-                if x:IsA("ParticleEmitter") or
-                   x:IsA("Trail") or
-                   x:IsA("Beam") then
-                    if effectsSaved[x]==nil then effectsSaved[x]=x.Enabled end
-                    pcall(function() x.Enabled=false end)
-                end
-            end
-
-            task.wait(0.5)
-        end
-    end)
-
-    return true
-end,function()
-    for x,v in pairs(effectsSaved) do
-        if x.Parent then pcall(function() x.Enabled=v end) end
-    end
-
-    effectsSaved={}
-end)
-
-A.setStatus("V13 ANTIS loaded: 3 Anti-Grab families + internal Anti-Kick guard.")
-print("[FTAP V13 ANTIS] READY")
+A.setStatus("V14 ANTIS loaded: source-exact AntiGrab/AntiKick families.")
+print("[FTAP V14 ANTIS] READY")

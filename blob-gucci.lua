@@ -1,118 +1,81 @@
--- FTAP V13 BLOB/GUCCI PACK
+-- FTAP V14 BLOB / GUCCI - SOURCE EXACT REBUILD
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local Workspace=game:GetService("Workspace")
-
 local LP=Players.LocalPlayer
+
 local ENV=_G
 if type(getgenv)=="function" then pcall(function() ENV=getgenv() end) end
-
 local A=ENV.FTAPV10
-if not A or not A.shared then warn("[FTAP V13 BLOB] core+shared first"); return end
+if not A or not A.shared then warn("[FTAP V14 BLOB] core+shared first"); return end
 if A.packs["BLOB"] then return end
 A.registerPack("BLOB")
-
 local S=A.shared
+
 local page=A.makePage("BLOB")
+local foreignForce=true
+local foreignRetry=0.03
+local extraSpin=0
 
-local force=true
-local retry=0.03
-local blobSpinSpeed=220
-local kickLoopDelay=0.25
-
-local function seatOwner(blob)
+local function blobSeatOwner(blob)
     local seat=blob and blob:FindFirstChild("VehicleSeat")
     local sw=seat and seat:FindFirstChild("SeatWeld")
     local part=sw and sw.Part1
-
     if not part then return nil end
-
     local ps=Players:GetPlayers()
     local i
-
     for i=1,#ps do
-        if ps[i].Character and A.isDescendantOf(part,ps[i].Character) then
-            return ps[i]
-        end
+        if ps[i].Character and A.isDescendantOf(part,ps[i].Character) then return ps[i] end
     end
-
     return nil
 end
 
 local function bestForeign(exclude)
     local c,h,root=A.getCharacter()
     if not c or not root then return nil,nil,nil end
-
     local d=Workspace:GetDescendants()
-    local bo,boo,bod=nil,nil,nil
-    local bf,bfd=nil,nil
+    local occ,occOwner,occDist=nil,nil,nil
+    local free,freeDist=nil,nil
     local i
-
     for i=1,#d do
         local b=d[i]
-
-        if b:IsA("Model") and
-           b.Name=="CreatureBlobman" and
-           b~=exclude then
-
+        if b:IsA("Model") and b.Name=="CreatureBlobman" and b~=exclude then
             local seat=b:FindFirstChild("VehicleSeat")
             local br=S.blobRoot(b)
-
             if seat and br then
                 local sw=seat:FindFirstChild("SeatWeld")
                 local mine=sw and sw.Part1 and A.isDescendantOf(sw.Part1,c)
-
                 if not mine then
                     local dist=(br.Position-root.Position).Magnitude
-                    local owner=seatOwner(b)
-
+                    local owner=blobSeatOwner(b)
                     if owner and owner~=LP then
-                        if not bod or dist<bod then
-                            bo=b
-                            boo=owner
-                            bod=dist
-                        end
+                        if not occDist or dist<occDist then occ=b; occOwner=owner; occDist=dist end
                     elseif not sw then
-                        if not bfd or dist<bfd then
-                            bf=b
-                            bfd=dist
-                        end
+                        if not freeDist or dist<freeDist then free=b; freeDist=dist end
                     end
                 end
             end
         end
     end
-
-    if bo then return bo,boo,bod end
-    return bf,nil,bfd
+    if occ then return occ,occOwner,occDist end
+    return free,nil,freeDist
 end
 
-local function interactAndSeat(blob,forceTake)
+local function borrow(blob,force)
     local c,h,root=A.getCharacter()
     local seat=blob and blob:FindFirstChild("VehicleSeat")
-
-    if not c or not h or not root or not seat then
-        return false,"missing"
-    end
-
-    if blob.Parent==nil then
-        return false,"deleted"
-    end
+    if not c or not h or not root or not seat then return false,"missing" end
 
     pcall(function()
-        root.CFrame=seat.CFrame*CFrame.new(0,2.2,0)
-        root.AssemblyLinearVelocity=Vector3.new(0,0,0)
-        root.AssemblyAngularVelocity=Vector3.new(0,0,0)
+        root.CFrame=seat.CFrame*CFrame.new(0,1,0)
+        root.AssemblyLinearVelocity=Vector3.zero
+        root.AssemblyAngularVelocity=Vector3.zero
     end)
-
-    -- User requested "teleport to the blob, click it, then do its thing".
-    -- Try ClickDetector/Prompt/Touch helpers before Seat:Sit.
     S.tryInteract(root,blob)
 
     local sw=seat:FindFirstChild("SeatWeld")
-
     if sw and sw.Part1 and not A.isDescendantOf(sw.Part1,c) then
-        if forceTake then
+        if force then
             pcall(function() sw:Destroy() end)
             task.wait()
         else
@@ -120,423 +83,388 @@ local function interactAndSeat(blob,forceTake)
         end
     end
 
-    pcall(function()
-        seat:Sit(h)
-    end)
+    local start=os.clock()
+    repeat
+        pcall(function()
+            root.CFrame=seat.CFrame*CFrame.new(0,1,0)
+            seat:Sit(h)
+        end)
+        RunService.Heartbeat:Wait()
+    until h.SeatPart==seat or os.clock()-start>1.5
 
-    task.wait(0.05)
-
-    local nw=seat:FindFirstChild("SeatWeld")
-
-    if nw and nw.Part1 and A.isDescendantOf(nw.Part1,c) then
-        return true,"mounted"
-    end
-
-    if h.SeatPart==seat then
-        return true,"seated"
-    end
-
-    -- One more physical overlap fallback.
-    pcall(function()
-        root.CFrame=seat.CFrame
-    end)
-
-    task.wait(0.08)
-
-    pcall(function()
-        seat:Sit(h)
-    end)
-
-    return h.SeatPart==seat,"fallback"
+    return h.SeatPart==seat,h.SeatPart==seat and "mounted" or "seat failed"
 end
 
-local function ensureBorrowed(exclude)
-    local mine=S.mountedBlob()
-
-    if mine and mine.Parent then
-        return mine,true,"already mounted"
-    end
-
-    local blob,owner,dist=bestForeign(exclude)
-
-    if not blob then
-        return nil,false,"no foreign/free Blobman"
-    end
-
-    local ok,why=interactAndSeat(blob,force)
-
-    if ok then
-        return blob,true,why
-    end
-
-    return nil,false,why
+local function ensureBlob()
+    local b=S.mountedBlob()
+    if b and b.Parent then return b,true end
+    local f=select(1,bestForeign())
+    if not f then return nil,false end
+    local ok=select(1,borrow(f,foreignForce))
+    if ok then return S.mountedBlob() or f,true end
+    return nil,false
 end
 
-A.blobAPI={
-    bestForeign=bestForeign,
-    interactAndSeat=interactAndSeat,
-    ensureBorrowed=ensureBorrowed,
-    seatOwner=seatOwner
-}
+A.blobAPI={bestForeign=bestForeign,borrow=borrow,ensureBorrowed=ensureBlob}
 
-A.addSection(page,"AUTO FOREIGN BLOB",
-    "Teleports to another player's Blobman, attempts click/prompt/touch interaction, seats you, and immediately reacquires if it disappears.")
+A.addSection(page,"FOREIGN BLOB AUTO",
+    "Uses another player's Blob if possible. Exact kick sources still require you to be genuinely seated on the Blobman.")
 
-A.addToggle(page,"foreign_force","Foreign Blob FORCE takeover",function()
-    force=true
-    return true
-end,function()
-    force=false
-end)
+A.addToggle(page,"foreign_force","Foreign Blob FORCE takeover",function() foreignForce=true return true end,function() foreignForce=false end)
 A.forceToggle("foreign_force",true)
+A.addSlider(page,"Foreign retry sec",0.01,0.30,0.01,0.03,function(v) foreignRetry=v end)
 
-A.addSlider(page,"Foreign Blob reacquire sec",0.01,0.30,0.01,0.03,function(v)
-    retry=v
+A.addButton(page,"RUN Borrow foreign Blob",function()
+    local b,o,d=bestForeign()
+    if not b then return A.setStatus("No foreign/free Blobman.") end
+    local ok,why=borrow(b,foreignForce)
+    A.setStatus("borrow="..tostring(ok).." owner="..tostring(o and o.Name or "free").." "..tostring(why))
 end)
 
-A.addButton(page,"RUN Scan foreign Blobmen",function()
-    local b,o,d=bestForeign()
-
-    if not b then
-        return A.setStatus("No foreign/free Blobman.")
-    end
-
-    A.setStatus(
-        "best="..tostring(b)..
-        " owner="..tostring(o and o.Name or "free")..
-        " dist="..tostring(math.floor((d or 0)+0.5))
-    )
-end)
-
-A.addButton(page,"RUN Borrow foreign Blob once",function()
-    local b,o,d=bestForeign()
-
-    if not b then
-        return A.setStatus("No Blobman.")
-    end
-
-    local ok,why=interactAndSeat(b,force)
-
-    A.setStatus(
-        "borrow="..tostring(ok)..
-        " previousOwner="..tostring(o and o.Name or "free")..
-        " "..tostring(why)
-    )
-end,true)
-
-A.addToggle(page,"auto_foreign","AUTO FOREIGN BLOB + instant reacquire",function()
+A.addToggle(page,"auto_foreign","AUTO FOREIGN BLOB",function()
     task.spawn(function()
         while A.toggleState["auto_foreign"] do
-            local mine=S.mountedBlob()
-
-            if not mine or mine.Parent==nil then
-                ensureBorrowed()
-            end
-
-            task.wait(retry)
+            if not S.mountedBlob() then ensureBlob() end
+            task.wait(foreignRetry)
         end
     end)
-
     return true
 end,function() end)
 
-A.addSection(page,"Blob Loop legacy tests",
-    "You reported these do not work well. They remain labeled LEGACY; Kick 3 below is now the primary path.")
+A.addSection(page,"BLOB KICK SOURCE MATRIX",
+    "A=TheWorst Aug-2026 plugin. B=Vovange hard lock. C=Vovange SpinGrab orbit. These use ONE-ARG CreatureDrop in kick phase.")
 
-local loopDelay=0.01
-A.addSlider(page,"Legacy loop delay",0.001,0.10,0.001,0.01,function(v)
-    loopDelay=v
-end)
+A.addSlider(page,"Extra Blob angular spin",0,1200,25,0,function(v) extraSpin=v end)
 
-A.addToggle(page,"blob_loop1","LEGACY Blob Loop 1 alternating",function()
-    task.spawn(function()
-        local side="Left"
+local function kickContext()
+    local b,ok=ensureBlob()
+    if not b then return nil,"no mounted Blob" end
 
-        while A.toggleState["blob_loop1"] do
-            local b=S.mountedBlob()
-            local p,tr=A.currentTarget()
+    local c,h,root=A.getCharacter()
+    local p,tr=A.currentTarget()
+    if not p or not tr then return nil,"target missing" end
 
-            if b and p and tr then
-                S.blobGrab(b,tr,side,false)
-                if side=="Left" then side="Right" else side="Left" end
-            end
+    local tChar=p.Character
+    local tHum=tChar and tChar:FindFirstChildOfClass("Humanoid")
+    local br=S.blobRoot(b)
+    local holder=b:FindFirstChild("BlobmanSeatAndOwnerScript")
+    local cg=holder and holder:FindFirstChild("CreatureGrab")
+    local cd=holder and holder:FindFirstChild("CreatureDrop")
+    local rd,rw=S.blobRight(b)
+    local refs=S.getRefs()
 
-            task.wait(loopDelay)
-        end
-    end)
+    if not h or not h.SeatPart or h.SeatPart.Parent~=b then return nil,"not actually seated on Blob" end
+    if not br or not cg or not cd or not rd or not rw then return nil,"Blob remotes/weld missing" end
+    if not refs.SetNetworkOwner or not refs.CreateGrabLine or not refs.DestroyGrabLine then return nil,"GrabEvents kick remotes missing" end
+    if not tHum then return nil,"target Humanoid missing" end
 
-    return true
-end,function() end)
+    return {
+        blob=b,blobRoot=br,cg=cg,cd=cd,rd=rd,rw=rw,
+        refs=refs,target=p,tChar=tChar,tRoot=tr,tHum=tHum
+    },nil
+end
 
-A.addSection(page,"PRIMARY BLOB KICK 3",
-    "This is the one you reported working. V13 spins the Blobman during every kick cycle and can loop it until DISABLE.")
-
-A.addSlider(page,"Kick Blob spin speed",0,1500,25,220,function(v)
-    blobSpinSpeed=v
-end)
-
-A.addSlider(page,"Kick 3 loop delay",0.05,2.00,0.05,0.25,function(v)
-    kickLoopDelay=v
-end)
-
-local function setBlobSpin(blob,value)
-    local br=S.blobRoot(blob)
-
-    if br then
-        pcall(function()
-            br.AssemblyAngularVelocity=Vector3.new(0,value,0)
-        end)
+local function applyExtraSpin(ctx)
+    if extraSpin>0 and ctx and ctx.blobRoot then
+        pcall(function() ctx.blobRoot.AssemblyAngularVelocity=Vector3.new(0,extraSpin,0) end)
     end
 end
 
-local function kick3Cycle()
-    local b=S.mountedBlob()
+local function clearExtraSpin(ctx)
+    if ctx and ctx.blobRoot then
+        pcall(function() ctx.blobRoot.AssemblyAngularVelocity=Vector3.zero end)
+    end
+end
 
-    if not b then
-        b=select(1,ensureBorrowed())
+local function theWorstAcquire(ctx)
+    local br=ctx.blobRoot
+    local tr=ctx.tRoot
+    br.CFrame=tr.CFrame
+    br.Velocity=Vector3.zero
+    S.fire3(ctx.cg,ctx.rd,tr,ctx.rw)
+    S.fire4(ctx.refs.CreateGrabLine,tr,Vector3.zero,tr.Position,false)
+
+    local st=os.clock()
+    while os.clock()-st<0.7 and tr.Parent do
+        S.fire2(ctx.refs.SetNetworkOwner,tr,tr.CFrame)
+        applyExtraSpin(ctx)
+        RunService.Heartbeat:Wait()
     end
 
-    local p,tr=A.currentTarget()
-    local br=S.blobRoot(b)
+    br.CFrame=ctx.saved
+    br.Velocity=Vector3.zero
 
-    if not b or not br or not p or not tr then
-        return false,"need Blob + target"
+    st=os.clock()
+    while os.clock()-st<0.7 and tr.Parent do
+        S.fire2(ctx.refs.SetNetworkOwner,tr,tr.CFrame)
+        applyExtraSpin(ctx)
+        RunService.Heartbeat:Wait()
     end
+end
 
-    local origin=br.CFrame
-    setBlobSpin(b,blobSpinSpeed)
+local function theWorstStep(ctx)
+    local tr=ctx.target.Character and ctx.target.Character:FindFirstChild("HumanoidRootPart")
+    local th=ctx.target.Character and ctx.target.Character:FindFirstChildOfClass("Humanoid")
+    if not tr or not th or th.Health<=0 then return false end
+    ctx.tRoot=tr
+    ctx.tHum=th
 
-    local i
+    ctx.blobRoot.CFrame=ctx.saved
+    ctx.blobRoot.Velocity=Vector3.zero
+    applyExtraSpin(ctx)
 
-    for i=1,4 do
-        if b.Parent==nil then
-            setBlobSpin(b,0)
-            return false,"Blob deleted"
-        end
+    tr.CFrame=ctx.lock
+    tr.Velocity=Vector3.zero
+    tr.RotVelocity=Vector3.zero
+    pcall(function()
+        tr.AssemblyLinearVelocity=Vector3.zero
+        tr.AssemblyAngularVelocity=Vector3.zero
+    end)
 
-        tr=A.targetRoot(p)
-        if not tr then
-            setBlobSpin(b,0)
-            return false,"target gone"
-        end
+    S.fire2(ctx.refs.SetNetworkOwner,tr,ctx.lock)
+    ctx.packet=ctx.packet+1
 
-        pcall(function()
-            br.CFrame=CFrame.new(origin.Position+Vector3.new(0,10*i,0))
-            br.AssemblyLinearVelocity=Vector3.new(0,0,0)
-            br.AssemblyAngularVelocity=Vector3.new(0,blobSpinSpeed,0)
-        end)
+    if ctx.packet>=2 then
+        ctx.packet=0
+        th.PlatformStand=true
+        th.Sit=true
+        S.blobDropOne(ctx.blob,"Right")
+        S.fire1(ctx.refs.DestroyGrabLine,tr)
+        S.fire3(ctx.cg,ctx.rd,tr,ctx.rw)
+        S.fire4(ctx.refs.CreateGrabLine,tr,Vector3.zero,tr.Position,false)
+    end
+    return true
+end
 
-        task.wait(0.1)
-        S.blobDrop(b,tr,"Left")
-        S.blobDrop(b,tr,"Right")
-        task.wait(0.1)
-        S.blobGrab(b,tr,"Left",false)
-        S.blobGrab(b,tr,"Right",false)
-        task.wait(0.1)
+local function runTheWorst(seconds,toggleKey)
+    local ctx,why=kickContext()
+    if not ctx then A.setStatus("Kick A preflight: "..tostring(why)); return false end
+    ctx.saved=ctx.blobRoot.CFrame
+    ctx.lock=ctx.saved*CFrame.new(0,19,0)
+    ctx.packet=0
+    theWorstAcquire(ctx)
+
+    local st=os.clock()
+    while (toggleKey and A.toggleState[toggleKey]) or (not toggleKey and os.clock()-st<seconds) do
+        if not theWorstStep(ctx) then break end
+        RunService.Heartbeat:Wait()
     end
 
     pcall(function()
-        br.CFrame=origin
-        br.AssemblyLinearVelocity=Vector3.new(0,0,0)
+        ctx.blobRoot.CFrame=ctx.saved
+        ctx.blobRoot.Velocity=Vector3.zero
     end)
-
-    setBlobSpin(b,0)
-    return true,"cycle complete"
+    clearExtraSpin(ctx)
+    return true
 end
 
-A.addButton(page,"RUN Blob Kick 3 ONCE + Blob spin",function()
-    task.spawn(function()
-        local ok,why=kick3Cycle()
-        A.setStatus("Kick3 once="..tostring(ok).." "..tostring(why))
-    end)
+A.addButton(page,"RUN Kick A - THEWORST EXACT 2s",function()
+    task.spawn(function() runTheWorst(2,nil) end)
 end,true)
 
-A.addToggle(page,"blob_kick3_loop","LOOP Blob Kick 3 + Blob spin",function()
-    task.spawn(function()
-        while A.toggleState["blob_kick3_loop"] do
-            local ok,why=kick3Cycle()
-
-            if not ok then
-                -- Reacquire a replacement Blobman aggressively.
-                ensureBorrowed()
-            end
-
-            task.wait(kickLoopDelay)
-        end
-
-        local b=S.mountedBlob()
-        if b then setBlobSpin(b,0) end
-    end)
-
+A.addToggle(page,"kick_a_loop","LOOP Kick A - THEWORST EXACT",function()
+    task.spawn(function() runTheWorst(0,"kick_a_loop") end)
     return true
-end,function()
-    local b=S.mountedBlob()
-    if b then setBlobSpin(b,0) end
-end)
+end,function() end)
 
-A.addSection(page,"Godman",nil)
+local function runVovangeHard(toggleKey)
+    local ctx,why=kickContext()
+    if not ctx then A.setStatus("Kick B preflight: "..tostring(why)); return false end
+    local saved=ctx.blobRoot.CFrame
+    local dragging=false
+    local grabStart=0
+    local lastRemote=0
+    local lockPos=saved*CFrame.new(0,23,0)
 
-local gs,gh,gr=35,3,8
-A.addSlider(page,"Godman speed",10,100,5,35,function(v) gs=v end)
-A.addSlider(page,"Godman HipHeight",0,15,1,3,function(v) gh=v end)
-A.addSlider(page,"Detector radius",2,30,1,8,function(v) gr=v end)
-
-A.addButton(page,"RUN Apply Godman",function()
-    local b=S.mountedBlob()
-
-    if not b then
-        b=select(1,ensureBorrowed())
-    end
-
-    if not b then
-        return A.setStatus("No Blobman.")
-    end
-
-    local h=b:FindFirstChildOfClass("Humanoid")
-
-    if h then
-        pcall(function()
-            h.WalkSpeed=gs
-            h.HipHeight=gh
-        end)
-    end
-
-    local names={"LeftDetector","RightDetector"}
-    local i
-
-    for i=1,2 do
-        local x=b:FindFirstChild(names[i])
-
-        if x and x:IsA("BasePart") then
-            pcall(function()
-                x.Size=Vector3.new(gr,gr,gr)
-            end)
-        end
-    end
-end)
-
--- ============================================================
--- GUCCI: all three use OTHER PLAYERS' Blobmen
--- ============================================================
-
-local gucci=A.makePage("GUCCI")
-
-A.addSection(gucci,"Foreign-Blob Gucci",
-    "Every Gucci variant now borrows another player's/free Blobman first instead of spawning its own.")
-
-local function getGucciBlob(exclude)
-    local current=S.mountedBlob()
-
-    if current and current.Parent and current~=exclude then
-        return current
-    end
-
-    return select(1,ensureBorrowed(exclude))
-end
-
-A.addToggle(gucci,"gucci1","Gucci 1 foreign high-altitude guard",function()
-    task.spawn(function()
-        local saved=nil
-
-        while A.toggleState["gucci1"] do
-            local b=getGucciBlob()
-            local br=S.blobRoot(b)
-            local c,h,r=A.getCharacter()
-            local refs=S.getRefs()
-
-            if b and br and r then
-                if not saved then saved=br.CFrame end
-
-                pcall(function()
-                    br.CFrame=CFrame.new(0,50000,0)
-                    br.AssemblyLinearVelocity=Vector3.new(0,0,0)
-                end)
-
-                S.fire2(refs.RagdollRemote,r,0)
+    while A.toggleState[toggleKey] do
+        local tr=ctx.target.Character and ctx.target.Character:FindFirstChild("HumanoidRootPart")
+        local th=ctx.target.Character and ctx.target.Character:FindFirstChildOfClass("Humanoid")
+        if not tr or not th or th.Health<=0 then RunService.Heartbeat:Wait() else
+            tr.Velocity=Vector3.zero
+            if not dragging then
+                ctx.blobRoot.CFrame=tr.CFrame
+                ctx.blobRoot.Velocity=Vector3.zero
+                applyExtraSpin(ctx)
+                if os.clock()-lastRemote>=0.002 then
+                    lastRemote=os.clock()
+                    th.PlatformStand=true
+                    th.Sit=true
+                    S.fire2(ctx.refs.SetNetworkOwner,tr,ctx.blobRoot.CFrame)
+                    S.fire1(ctx.refs.DestroyGrabLine,tr)
+                end
+                if grabStart==0 then grabStart=os.clock() end
+                if os.clock()-grabStart>0.35 then
+                    dragging=true
+                    grabStart=0
+                    ctx.blobRoot.CFrame=saved
+                    ctx.blobRoot.Velocity=Vector3.zero
+                end
             else
-                ensureBorrowed()
+                ctx.blobRoot.CFrame=saved
+                ctx.blobRoot.Velocity=Vector3.zero
+                applyExtraSpin(ctx)
+                tr.CFrame=lockPos
+                th.PlatformStand=true
+                th.Sit=true
+                if os.clock()-lastRemote>=0.002 then
+                    lastRemote=os.clock()
+                    S.fire2(ctx.refs.SetNetworkOwner,tr,lockPos)
+                    S.fire1(ctx.refs.DestroyGrabLine,tr)
+                    S.blobDropOne(ctx.blob,"Right")
+                    S.fire3(ctx.cg,ctx.rd,tr,ctx.rw)
+                end
             end
-
             RunService.Heartbeat:Wait()
         end
+    end
 
-        local b=S.mountedBlob()
-        local br=S.blobRoot(b)
+    pcall(function() ctx.blobRoot.CFrame=saved; ctx.blobRoot.Velocity=Vector3.zero end)
+    clearExtraSpin(ctx)
+end
 
-        if br and saved then
-            pcall(function() br.CFrame=saved end)
-        end
-    end)
-
+A.addToggle(page,"kick_b_loop","LOOP Kick B - VOVANGE HARD",function()
+    task.spawn(function() runVovangeHard("kick_b_loop") end)
     return true
 end,function() end)
 
-A.addToggle(gucci,"gucci2","Gucci 2 foreign AutoGucci loop",function()
+local function runSpinGrab(toggleKey)
+    local ctx,why=kickContext()
+    if not ctx then A.setStatus("Kick C preflight: "..tostring(why)); return false end
+    local saved=nil
+    local dragging=false
+    local grabStart=0
+    local orbit=0
+    local lastRemote=0
+    local lockedPos=nil
+
+    while A.toggleState[toggleKey] do
+        local tr=ctx.target.Character and ctx.target.Character:FindFirstChild("HumanoidRootPart")
+        local th=ctx.target.Character and ctx.target.Character:FindFirstChildOfClass("Humanoid")
+        local tc=ctx.target.Character
+        if not tr or not th or not tc or th.Health<=0 then RunService.Heartbeat:Wait() else
+            tr.Velocity=Vector3.zero
+            if not dragging then
+                if grabStart==0 then grabStart=os.clock(); saved=ctx.blobRoot.CFrame end
+                ctx.blobRoot.CFrame=tr.CFrame
+                ctx.blobRoot.Velocity=Vector3.zero
+                if os.clock()-lastRemote>=0.002 then
+                    lastRemote=os.clock()
+                    th.PlatformStand=true
+                    th.Sit=true
+                    S.fire2(ctx.refs.SetNetworkOwner,tr,ctx.blobRoot.CFrame)
+                    S.fire1(ctx.refs.DestroyGrabLine,tr)
+                end
+                if os.clock()-grabStart>0.35 then
+                    dragging=true
+                    grabStart=0
+                    orbit=0
+                    local pcld=nil
+                    local kids=tc:GetChildren()
+                    local i
+                    for i=1,#kids do
+                        if kids[i]:IsA("BasePart") and string.lower(kids[i].Name)=="playercharacterlocationdetector" then
+                            pcld=kids[i]
+                            break
+                        end
+                    end
+                    lockedPos=pcld and pcld.Position or tr.Position
+                    ctx.blobRoot.CFrame=saved
+                    ctx.blobRoot.Velocity=Vector3.zero
+                    S.blobDropOne(ctx.blob,"Right")
+                    S.fire3(ctx.cg,ctx.rd,tr,ctx.rw)
+                end
+                RunService.Heartbeat:Wait()
+            else
+                local dt=RunService.Heartbeat:Wait()
+                orbit=orbit+30*dt
+                local base=lockedPos or tr.Position
+                local rayParams=RaycastParams.new()
+                rayParams.FilterType=Enum.RaycastFilterType.Exclude
+                rayParams.FilterDescendantsInstances={tc,LP.Character,ctx.blob}
+                local hit=Workspace:Raycast(base+Vector3.new(0,5,0),Vector3.new(0,-50,0),rayParams)
+                local gy=hit and hit.Position.Y or base.Y
+                local center=Vector3.new(base.X,gy+6,base.Z)
+                local pos=center+Vector3.new(math.cos(orbit)*30,0,math.sin(orbit)*30)
+                ctx.blobRoot.CFrame=CFrame.lookAt(pos,center)
+                ctx.blobRoot.Velocity=Vector3.zero
+                th.PlatformStand=true
+                th.Sit=true
+
+                if os.clock()-lastRemote>=0.002 then
+                    lastRemote=os.clock()
+                    local tcf=CFrame.new(base)*tr.CFrame.Rotation
+                    S.fire2(ctx.refs.SetNetworkOwner,tr,tcf)
+                    S.fire1(ctx.refs.DestroyGrabLine,tr)
+                    S.blobDropOne(ctx.blob,"Right")
+                    S.fire3(ctx.cg,ctx.rd,tr,ctx.rw)
+                end
+            end
+        end
+    end
+
+    if saved then pcall(function() ctx.blobRoot.CFrame=saved; ctx.blobRoot.Velocity=Vector3.zero end) end
+end
+
+A.addToggle(page,"kick_c_loop","LOOP Kick C - VOVANGE SPIN GRAB",function()
+    task.spawn(function() runSpinGrab("kick_c_loop") end)
+    return true
+end,function() end)
+
+A.addButton(page,"BLOB KICK PREFLIGHT",function()
+    local ctx,why=kickContext()
+    if not ctx then return A.setStatus("FAIL: "..tostring(why)) end
+    A.setStatus("PASS: seated Blob + RightDetector/Weld + SNO/Create/DestroyGrabLine + target Humanoid")
+end)
+
+A.addSection(page,"CRITCL GENERIC LOOP (2-ARG DROP)",nil)
+A.addToggle(page,"critcl_loop","CRITCL grab/drop/silent loop",function()
     task.spawn(function()
-        while A.toggleState["gucci2"] do
-            local b=getGucciBlob()
-            local seat=b and b:FindFirstChild("VehicleSeat")
+        while A.toggleState["critcl_loop"] do
+            local b=S.mountedBlob()
+            local p,tr=A.currentTarget()
+            if b and p and tr then
+                S.blobGrab(b,tr,"Left",false)
+                task.wait(0.05)
+                S.blobDropTwo(b,tr,"Left")
+                task.wait(0.05)
+                S.blobGrab(b,tr,"Left",true)
+                task.wait(6.25)
+            else
+                task.wait(0.1)
+            end
+        end
+    end)
+    return true
+end,function() end)
+
+-- Foreign Blob Gucci remains experimental because public Gucci sources normally spawn/own their own Blob.
+local gucci=A.makePage("GUCCI")
+A.addSection(gucci,"FOREIGN BLOB GUCCI",
+    "Experimental adaptation: public Anti-Gucci logic normally uses your own Blob. These variants borrow a foreign/free Blob first.")
+
+A.addToggle(gucci,"gucci_foreign","Foreign Blob AutoGucci",function()
+    task.spawn(function()
+        local safe=nil
+        while A.toggleState["gucci_foreign"] do
+            local b=select(1,ensureBlob())
             local c,h,r=A.getCharacter()
             local refs=S.getRefs()
-
-            if b and seat and h and r then
-                S.tryInteract(r,b)
-                pcall(function() seat:Sit(h) end)
+            if b and h and r then
+                if not safe then safe=r.CFrame end
+                local seat=b:FindFirstChild("VehicleSeat")
+                if seat and h.SeatPart~=seat then borrow(b,true) end
                 S.fire2(refs.RagdollRemote,r,0)
-
-                task.wait(0.1)
-
-                pcall(function()
-                    h:ChangeState(Enum.HumanoidStateType.Jumping)
-                end)
-            else
-                ensureBorrowed()
+                if h.Jump and h.Sit then
+                    pcall(function() h:ChangeState(Enum.HumanoidStateType.Jumping) end)
+                end
             end
-
             task.wait(0.1)
         end
+        local c,h,r=A.getCharacter()
+        if safe and r then pcall(function() r.CFrame=safe end) end
     end)
-
     return true
 end,function() end)
 
-A.addToggle(gucci,"gucci3","Gucci 3 ROTATE foreign Blobmen",function()
-    task.spawn(function()
-        local last=nil
-
-        while A.toggleState["gucci3"] do
-            local b,o,d=bestForeign(last)
-
-            if not b then
-                b=select(1,bestForeign())
-            end
-
-            if b then
-                interactAndSeat(b,true)
-                last=b
-
-                local c,h,r=A.getCharacter()
-                local refs=S.getRefs()
-
-                if r then
-                    S.tryInteract(r,b)
-                    S.fire2(refs.RagdollRemote,r,0)
-                end
-
-                if h then
-                    pcall(function()
-                        h.Jump=true
-                        h:ChangeState(Enum.HumanoidStateType.Jumping)
-                    end)
-                end
-            end
-
-            task.wait(0.25)
-        end
-    end)
-
-    return true
-end,function() end)
-
-A.setStatus("V13 BLOB/GUCCI loaded. Kick3 is primary + spins Blob + loops.")
-print("[FTAP V13 BLOB] READY")
+A.setStatus("V14 BLOB loaded: exact TheWorst/Vovange kick families.")
+print("[FTAP V14 BLOB] READY")

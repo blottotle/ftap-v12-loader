@@ -1,4 +1,4 @@
--- FTAP V13 MOVE / AUTO SLOT PACK
+-- FTAP V14 MOVE / AUTO SLOT PACK
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local UserInputService=game:GetService("UserInputService")
@@ -9,7 +9,7 @@ local ENV=_G
 if type(getgenv)=="function" then pcall(function() ENV=getgenv() end) end
 
 local A=ENV.FTAPV10
-if not A or not A.shared then warn("[FTAP V13 MOVE] core+shared first"); return end
+if not A or not A.shared then warn("[FTAP V14 MOVE] core+shared first"); return end
 if A.packs["MOVE"] then return end
 A.registerPack("MOVE")
 
@@ -320,4 +320,4 @@ A.addButton(page,"RUN Teleport behind target",function()
 end)
 
 A.setStatus("V13 MOVE loaded. AUTO SPIN now means SLOT/CASINO SPIN.")
-print("[FTAP V13 MOVE] READY")
+print("[FTAP V14 MOVE] READY")

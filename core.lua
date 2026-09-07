@@ -1,4 +1,4 @@
--- FTAP V13 REMOTE MODULAR CORE
+-- FTAP V14 SOURCE REBUILD
 -- Small compatibility-first GUI shell. Execute this FIRST.
 -- No HTTP/loadstring/debug/getgc/hooks. No PlaceId lock.
 
@@ -10,7 +10,7 @@ local Workspace = game:GetService("Workspace")
 
 local LP = Players.LocalPlayer
 if LP == nil then
-    warn("[FTAP V13 CORE] LocalPlayer missing")
+    warn("[FTAP V14 CORE] LocalPlayer missing")
     return
 end
 
@@ -28,7 +28,7 @@ end
 local API = {}
 ENV.FTAPV10 = API
 
-API.version = "13.0-remote-modular"
+API.version = "14.0-source-rebuild"
 API.packs = {}
 API.toggleState = {}
 API.toggleBusy = {}
@@ -165,7 +165,7 @@ API.COLORS = COLORS
 
 local pg = LP:FindFirstChild("PlayerGui") or LP:WaitForChild("PlayerGui", 8)
 if pg == nil then
-    warn("[FTAP V13 CORE] PlayerGui missing")
+    warn("[FTAP V14 CORE] PlayerGui missing")
     return
 end
 
@@ -204,7 +204,7 @@ title.TextColor3 = COLORS.TEXT
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
-title.Text = "FTAP V13 REMOTE MODULAR CORE"
+title.Text = "FTAP V14 SOURCE REBUILD"
 
 local subtitle = Instance.new("TextLabel")
 subtitle.Parent = top
@@ -301,7 +301,7 @@ API.pageHost = host
 
 local function setStatus(text)
     status.Text = tostring(text)
-    print("[FTAP V13] " .. tostring(text))
+    print("[FTAP V14] " .. tostring(text))
 end
 API.setStatus = setStatus
 
@@ -711,7 +711,7 @@ API.addSection(CORE, "V12 remote modular core",
 
 API.addButton(CORE, "EXECUTION TEST", function()
     setStatus("V10 CORE EXECUTION TEST PASSED")
-    print("FTAP_V13_CORE_EXECUTION_TEST_PASSED")
+    print("FTAP_V14_CORE_EXECUTION_TEST_PASSED")
 end)
 
 API.addButton(CORE, "RECON", function()
@@ -800,4 +800,4 @@ close.Activated:Connect(API.shutdown)
 
 API.showPage("CORE")
 setStatus("V10 CORE loaded. Run EXECUTION TEST, then execute feature pack files.")
-print("[FTAP V13 CORE] READY")
+print("[FTAP V14 CORE] READY")
