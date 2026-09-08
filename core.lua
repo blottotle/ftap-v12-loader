@@ -1,6 +1,16 @@
--- FTAP V14.4 SERVER TEST REBUILD
+-- FTAP V14 SOURCE REBUILD
 -- Small compatibility-first GUI shell. Execute this FIRST.
--- No HTTP/loadstring/debug/getgc/hooks. No PlaceId lock.
+-- No HTTP/loadstring/debug/getgc/hooks.
+-- Exact-place safety gate: configure with CONFIGURE_PLACE.sh before use.
+local FTAP_ALLOWED_PLACE_ID=0 -- FTAP_PLACE_LOCK
+local FTAP_LOCK_ENV=_G
+if type(getgenv)=="function" then pcall(function() FTAP_LOCK_ENV=getgenv() end) end
+if FTAP_ALLOWED_PLACE_ID<=0 or game.PlaceId~=FTAP_ALLOWED_PLACE_ID then
+    -- Clear a stale prior-session API so later packs cannot attach to an old unlocked core.
+    if type(FTAP_LOCK_ENV)=="table" then FTAP_LOCK_ENV.FTAPV10=nil end
+    warn("[FTAP V14R] PLACE LOCK: configure the exact game.PlaceId first (current="..tostring(game.PlaceId)..")")
+    return
+end
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -28,7 +38,7 @@ end
 local API = {}
 ENV.FTAPV10 = API
 
-API.version = "14.2-localstress-respawn"
+API.version = "14.0-source-rebuild"
 API.packs = {}
 API.toggleState = {}
 API.toggleBusy = {}
@@ -204,7 +214,7 @@ title.TextColor3 = COLORS.TEXT
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
-title.Text = "FTAP V14.4 SERVER TEST REBUILD"
+title.Text = "FTAP V14 SOURCE REBUILD"
 
 local subtitle = Instance.new("TextLabel")
 subtitle.Parent = top
@@ -799,5 +809,5 @@ end
 close.Activated:Connect(API.shutdown)
 
 API.showPage("CORE")
-setStatus("V14.3 CORE loaded. Run EXECUTION TEST, then execute feature pack files.")
+setStatus("V10 CORE loaded. Run EXECUTION TEST, then execute feature pack files.")
 print("[FTAP V14 CORE] READY")

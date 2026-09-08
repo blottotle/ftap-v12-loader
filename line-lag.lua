@@ -1,104 +1,325 @@
--- FTAP V14.4 SERVER STRESS CONTROLLER
--- No local stress is performed here. This page only controls the place-locked
--- server-stress.server.lua harness installed by the game owner.
-local ReplicatedStorage=game:GetService("ReplicatedStorage")
+-- FTAP V14R LAG - ORIGINAL V14 + 2025-2026 RESEARCH VARIANTS
+local Players=game:GetService("Players")
+local RunService=game:GetService("RunService")
+local Workspace=game:GetService("Workspace")
+local LP=Players.LocalPlayer
 
 local ENV=_G
 if type(getgenv)=="function" then pcall(function() ENV=getgenv() end) end
 local A=ENV.FTAPV10
-if not A then warn("[FTAP V14.4 SERVER STRESS] core first"); return end
+if not A or not A.shared then warn("[FTAP V14 LAG] core+shared first"); return end
 if A.packs["LAG"] then return end
 A.registerPack("LAG")
 
+local S=A.shared
 local page=A.makePage("LAG")
-local remote=ReplicatedStorage:FindFirstChild("FTAPServerStressControl")
 
-local function refreshRemote()
-    remote=ReplicatedStorage:FindFirstChild("FTAPServerStressControl")
-    return remote and remote:IsA("RemoteEvent") and remote:GetAttribute("AllowedPlaceId")==game.PlaceId
-end
-local function send(action,mode,params)
-    if not refreshRemote() then
-        A.setStatus("SERVER HARNESS OFFLINE: install server-stress.server.lua in ServerScriptService and set ALLOWED_PLACE_ID="..tostring(game.PlaceId))
+A.addSection(page,"LINE LAG SOURCE MATRIX",
+    "A=Vovange SpawnLocation x250. B=Defiant/Critcl every player's Torso x400. Both call GrabEvents.CreateGrabLine with TWO args.")
+
+local lineA=250
+local lineB=400
+
+A.addSlider(page,"Line A count",50,1000,10,250,function(v) lineA=v end)
+A.addToggle(page,"line_vovange","Line Lag A - VOVANGE EXACT",function()
+    local refs=S.getRefs()
+    local spawn=Workspace:FindFirstChild("SpawnLocation")
+    if not refs.CreateGrabLine then A.setStatus("CreateGrabLine missing."); return false end
+    if not spawn or not spawn:IsA("BasePart") then A.setStatus("workspace.SpawnLocation missing."); return false end
+
+    task.spawn(function()
+        while A.toggleState["line_vovange"] do
+            local i
+            for i=1,lineA do
+                if not A.toggleState["line_vovange"] then break end
+                S.fire2(refs.CreateGrabLine,spawn,spawn.CFrame)
+            end
+            task.wait(1)
+        end
+    end)
+    return true
+end,function() end)
+
+A.addSlider(page,"Line B lines",50,1000,10,400,function(v) lineB=v end)
+A.addToggle(page,"line_defiant","Line Lag B - DEFIANT/CRITCL EXACT",function()
+    local refs=S.getRefs()
+    if not refs.CreateGrabLine then A.setStatus("CreateGrabLine missing."); return false end
+
+    task.spawn(function()
+        while A.toggleState["line_defiant"] do
+            local a,i
+            local ps=Players:GetPlayers()
+            for a=0,lineB do
+                if not A.toggleState["line_defiant"] then break end
+                for i=1,#ps do
+                    local p=ps[i]
+                    local c=p.Character
+                    local part=c and (c:FindFirstChild("Torso") or c:FindFirstChild("HumanoidRootPart"))
+                    if part then
+                        S.fire2(refs.CreateGrabLine,part,part.CFrame)
+                    end
+                end
+            end
+            task.wait(1)
+        end
+    end)
+    return true
+end,function() end)
+
+A.addSection(page,"2025-2026 LINE VARIANT TESTS",
+    "Research mapping: fixed-anchor=A above; player fan-out=B above; this adds bounded lifecycle-churn and transform-argument probes so each server-side path can be tested separately.")
+
+local lifecycleBurst=30
+local transformOffset=512
+
+A.addSlider(page,"Lifecycle churn cycles",1,120,1,30,function(v) lifecycleBurst=v end)
+A.addToggle(page,"line_lifecycle","Line Lag C - CREATE/DESTROY LIFECYCLE",function()
+    local refs=S.getRefs()
+    if not refs.CreateGrabLine or not refs.DestroyGrabLine then
+        A.setStatus("CreateGrabLine/DestroyGrabLine missing.")
         return false
     end
-    remote:FireServer({action=action,mode=mode,params=params})
+    task.spawn(function()
+        while A.toggleState["line_lifecycle"] do
+            local _,tr=A.currentTarget()
+            local part=tr or Workspace:FindFirstChild("SpawnLocation")
+            if part and part:IsA("BasePart") then
+                local i
+                for i=1,lifecycleBurst do
+                    if not A.toggleState["line_lifecycle"] then break end
+                    S.fire2(refs.CreateGrabLine,part,part.CFrame)
+                    S.fire1(refs.DestroyGrabLine,part)
+                end
+            end
+            task.wait(0.20)
+        end
+    end)
     return true
-end
-local statusConn=nil
-local function bindStatus()
-    if statusConn then pcall(function() statusConn:Disconnect() end); statusConn=nil end
-    if refreshRemote() then
-        statusConn=remote.OnClientEvent:Connect(function(msg)
-            if type(msg)=="table" and msg.kind=="STATUS" then A.setStatus("SERVER: "..tostring(msg.text)) end
-        end)
+end,function() end)
+
+A.addSlider(page,"Transform probe offset",64,4096,64,512,function(v) transformOffset=v end)
+A.addToggle(page,"line_transform_probe","Line Lag D - TRANSFORM ARG PROBE",function()
+    local refs=S.getRefs()
+    local spawn=Workspace:FindFirstChild("SpawnLocation")
+    if not refs.CreateGrabLine then A.setStatus("CreateGrabLine missing."); return false end
+    if not spawn or not spawn:IsA("BasePart") then A.setStatus("workspace.SpawnLocation missing."); return false end
+    task.spawn(function()
+        local sign=1
+        while A.toggleState["line_transform_probe"] do
+            local probe=spawn.CFrame*CFrame.new(transformOffset*sign,0,0)
+            S.fire2(refs.CreateGrabLine,spawn,probe)
+            sign=-sign
+            task.wait(0.50)
+        end
+    end)
+    return true
+end,function() end)
+
+A.addSection(page,"PACKET / PING LAG SOURCE MATRIX",
+    "Multiple leaked hubs agree this remote is GrabEvents.ExtendGrabLine. No manual remote-name guess anymore.")
+
+local packetA=30000
+local packetB=3000
+local packetC=20
+
+A.addSlider(page,"Packet A emoji count",30000,350000,10000,30000,function(v) packetA=v end)
+A.addToggle(page,"packet_vovange","Packet Lag A - VOVANGE EXACT",function()
+    local refs=S.getRefs()
+    if not refs.ExtendGrabLine then A.setStatus("ExtendGrabLine missing."); return false end
+    task.spawn(function()
+        while A.toggleState["packet_vovange"] do
+            local payload=string.rep("😂",packetA)
+            S.fire1(refs.ExtendGrabLine,payload)
+            task.wait(0.1)
+        end
+    end)
+    return true
+end,function() end)
+
+A.addSlider(page,"Packet B Balls repetitions",500,5000,100,3000,function(v) packetB=v end)
+A.addToggle(page,"packet_defiant","Packet Lag B - DEFIANT EXACT",function()
+    local refs=S.getRefs()
+    if not refs.ExtendGrabLine then A.setStatus("ExtendGrabLine missing."); return false end
+    task.spawn(function()
+        while A.toggleState["packet_defiant"] do
+            S.fire1(refs.ExtendGrabLine,string.rep("Balls Balls Balls Balls",packetB))
+            task.wait()
+        end
+    end)
+    return true
+end,function() end)
+
+A.addSlider(page,"Packet C strength",1,100,1,20,function(v) packetC=v end)
+A.addToggle(page,"packet_polar","Packet Lag C - POLAR EXACT FAMILY",function()
+    local refs=S.getRefs()
+    if not refs.ExtendGrabLine then A.setStatus("ExtendGrabLine missing."); return false end
+    task.spawn(function()
+        while A.toggleState["packet_polar"] do
+            S.fire1(refs.ExtendGrabLine,string.rep("😂😂😂😂🤣🤣🤣🤣",100*packetC))
+            task.wait(1)
+        end
+    end)
+    return true
+end,function() end)
+
+A.addSection(page,"PAYLOAD SIZE SWEEP",
+    "Research diagnostic for ExtendGrabLine payload amplification. Walks through bounded payload sizes instead of hiding the threshold inside one giant string.")
+
+local packetSweepMax=131072
+A.addSlider(page,"Payload sweep max bytes",4096,262144,4096,131072,function(v) packetSweepMax=v end)
+A.addToggle(page,"packet_size_sweep","Packet Lag D - SIZE SWEEP",function()
+    local refs=S.getRefs()
+    if not refs.ExtendGrabLine then A.setStatus("ExtendGrabLine missing."); return false end
+    task.spawn(function()
+        local sizes={1024,4096,16384,65536,131072,262144}
+        while A.toggleState["packet_size_sweep"] do
+            local i
+            for i=1,#sizes do
+                if not A.toggleState["packet_size_sweep"] then break end
+                local n=math.min(sizes[i],packetSweepMax)
+                if n>=1024 then
+                    S.fire1(refs.ExtendGrabLine,string.rep("X",n))
+                    A.setStatus("Payload sweep sent bytes="..tostring(n))
+                    task.wait(0.50)
+                end
+                if n>=packetSweepMax then break end
+            end
+            task.wait(2.0)
+        end
+    end)
+    return true
+end,function() end)
+
+A.addSection(page,"SHURIKEN FPS / PHYSICS LAG",
+    "Exact Defiant/Critcl family. V14 fixes the previous bug by searching your PlotItems folder as well as SpawnedInToys.")
+
+local decoyCount=2
+local shurCount=16
+local shurBodies={}
+
+A.addSlider(page,"Setup decoys",1,4,1,2,function(v) decoyCount=v end)
+A.addSlider(page,"Setup shurikens",8,32,1,16,function(v) shurCount=v end)
+
+A.addButton(page,"RUN Setup Shuriken-lag toys",function()
+    local c,h,r=A.getCharacter()
+    if not r then return A.setStatus("Root missing.") end
+    local i
+    for i=1,decoyCount do
+        S.spawnToy("NpcRobloxianMascot",r.CFrame*CFrame.new(i*3,0,-8),Vector3.zero)
+        task.wait(0.1)
     end
-end
-bindStatus()
+    for i=1,shurCount do
+        S.spawnToy("NinjaShuriken",r.CFrame*CFrame.new(0,4,-4),Vector3.zero)
+        task.wait(0.03)
+    end
+    local fs=S.describeToyFolders()
+    A.setStatus("Toy setup requested. folders="..table.concat(fs," | "))
+end)
 
-A.addSection(page,"SERVER-ONLY CONTINUOUS STRESS LAB",
-    "No client Beams/GUI/raycast/freeze loops remain. Every test runs on the server harness and continues until STOP/PANIC. Exact PlaceId gating lives in the server script.")
-A.addButton(page,"CHECK SERVER HARNESS",function() bindStatus(); send("STATUS") end)
+A.addToggle(page,"fps_shuriken","FPS Lag - DEFIANT SHURIKEN EXACT",function()
+    local decoys=S.findOwnToys("NpcRobloxianMascot")
+    local shurs=S.findOwnToys("NinjaShuriken")
+    if #decoys==0 or #shurs==0 then
+        A.setStatus("Need owned decoy + shuriken. Press Setup first.")
+        return false
+    end
 
-local cpuMs=6
-local queryCount=500
-local churnCount=20
-local replicationCount=180
-local physicsCount=160
-local constraintCount=120
-local pathJobs=2
-local gcKB=512
-local tweenCount=120
-local jointCount=10
-local signalFires=500
-local signalListeners=8
+    shurBodies={}
+    local di
+    for di=1,#decoys do
+        local dr=decoys[di]:FindFirstChild("HumanoidRootPart")
+        if dr then
+            local startIndex=(di-1)*8+1
+            local endIndex=math.min(startIndex+7,#shurs)
+            local si
+            for si=startIndex,endIndex do
+                local sh=shurs[si]
+                local sticky=sh and sh:FindFirstChild("StickyPart",true)
+                if sticky and sticky:IsA("BasePart") then
+                    sticky.CanTouch=true
 
-A.addSlider(page,"CPU redline ms / heartbeat",0.25,14,0.25,6,function(v) cpuMs=v end)
-A.addButton(page,"START #1 CPU HEARTBEAT REDLINE",function() send("START","CPU_REDLINE",{ms=cpuMs}) end)
+                    local dd=decoys[di]:GetDescendants()
+                    local k
+                    for k=1,#dd do if dd[k]:IsA("BasePart") then dd[k].CanCollide=false end end
 
-A.addSlider(page,"Server spatial queries / heartbeat",10,2500,10,500,function(v) queryCount=v end)
-A.addButton(page,"START #2 SERVER QUERY STORM",function() send("START","QUERY_STORM",{count=queryCount}) end)
+                    local bp=Instance.new("BodyPosition")
+                    bp.Name="FTAPV14LagBP"
+                    bp.MaxForce=Vector3.new(math.huge,math.huge,math.huge)
+                    bp.P=10000
+                    bp.D=500
+                    bp.Parent=sticky
 
-A.addSlider(page,"Replicated instances / heartbeat",1,80,1,20,function(v) churnCount=v end)
-A.addButton(page,"START #3 INSTANCE CREATE/DESTROY CHURN",function() send("START","INSTANCE_CHURN",{count=churnCount}) end)
+                    local sd=sh:GetDescendants()
+                    for k=1,#sd do if sd[k]:IsA("BasePart") then sd[k].CanCollide=false end end
 
-A.addSlider(page,"Replicated property pool",10,700,10,180,function(v) replicationCount=v end)
-A.addButton(page,"START #4 REPLICATION PROPERTY CHURN",function() send("START","REPLICATION_CHURN",{count=replicationCount}) end)
+                    local kids=sticky:GetChildren()
+                    for k=1,#kids do
+                        if kids[k].Name=="TouchInterest" then pcall(function() kids[k]:Destroy() end) end
+                    end
 
-A.addSlider(page,"Server-owned physics bodies",10,450,10,160,function(v) physicsCount=v end)
-A.addButton(page,"START #5 PHYSICS CONTACT LOAD",function() send("START","PHYSICS_CONTACT",{count=physicsCount}) end)
+                    shurBodies[#shurBodies+1]={sticky=sticky,bp=bp,decoy=dr}
+                end
+            end
+        end
+    end
 
-A.addSlider(page,"Constraint chain links",10,260,10,120,function(v) constraintCount=v end)
-A.addButton(page,"START #6 CONSTRAINT SOLVER LOAD",function() send("START","CONSTRAINT_SOLVER",{count=constraintCount}) end)
+    if #shurBodies==0 then
+        A.setStatus("No usable StickyPart/decoy pairs.")
+        return false
+    end
 
-A.addSlider(page,"Path jobs / burst",1,4,1,2,function(v) pathJobs=v end)
-A.addButton(page,"START #7 PATHFINDING LOAD",function() send("START","PATHFIND",{jobs=pathJobs,interval=0.6}) end)
+    task.spawn(function()
+        while A.toggleState["fps_shuriken"] do
+            local i
+            for i=1,#shurBodies do
+                local x=shurBodies[i]
+                if x.sticky.Parent and x.bp.Parent and x.decoy.Parent then
+                    x.sticky.AssemblyAngularVelocity=Vector3.new(
+                        math.random(-100,100)*50,
+                        math.random(-100,100)*50,
+                        math.random(-100,100)*50
+                    )
+                    x.bp.Position=Vector3.new(x.decoy.Position.X,x.decoy.Position.Y-4,x.decoy.Position.Z)
+                end
+            end
+            task.wait(0.0001)
+            for i=1,#shurBodies do
+                local x=shurBodies[i]
+                if x.bp.Parent and x.decoy.Parent then
+                    x.bp.Position=Vector3.new(x.decoy.Position.X,x.decoy.Position.Y+3,x.decoy.Position.Z)
+                end
+            end
+            task.wait(0.0001)
+        end
+    end)
 
-A.addSlider(page,"Server allocation churn KB / heartbeat",16,4096,16,512,function(v) gcKB=v end)
-A.addButton(page,"START #8 ALLOCATION / GC CHURN",function() send("START","GC_CHURN",{kb=gcKB}) end)
+    A.setStatus("Defiant Shuriken lag pairs="..tostring(#shurBodies))
+    return true
+end,function()
+    local i
+    for i=1,#shurBodies do
+        if shurBodies[i].bp then pcall(function() shurBodies[i].bp:Destroy() end) end
+    end
+    shurBodies={}
+end)
 
-A.addSlider(page,"Server tweened replicated parts",10,320,10,120,function(v) tweenCount=v end)
-A.addButton(page,"START #9 SERVER TWEEN REPLICATION",function() send("START","TWEEN_REPLICATION",{count=tweenCount}) end)
+A.addButton(page,"RUN Research variant summary",function()
+    A.setStatus("Research map: A=fixed-anchor; B=player fan-out; C=create/destroy lifecycle churn; D=transform argument probe; Packet D=bounded payload-size sweep; FPS=physics saturation.")
+end)
 
-A.addSlider(page,"Joint create/destroy pairs / heartbeat",1,40,1,10,function(v) jointCount=v end)
-A.addButton(page,"START #10 JOINT / ASSEMBLY CHURN",function() send("START","JOINT_CHURN",{count=jointCount}) end)
+A.addSection(page,"LAG PREFLIGHT",nil)
+A.addButton(page,"RUN LAG PREFLIGHT",function()
+    local refs=S.getRefs()
+    local spawn=Workspace:FindFirstChild("SpawnLocation")
+    local fs=S.ownToyFolders()
+    A.setStatus(
+        "CreateGrabLine="..tostring(refs.CreateGrabLine~=nil)..
+        " DestroyGrabLine="..tostring(refs.DestroyGrabLine~=nil)..
+        " ExtendGrabLine="..tostring(refs.ExtendGrabLine~=nil)..
+        " SpawnLocation="..tostring(spawn~=nil)..
+        " toyFolders="..tostring(#fs)
+    )
+end)
 
-A.addSlider(page,"Bindable fires / heartbeat",10,2500,10,500,function(v) signalFires=v end)
-A.addSlider(page,"Signal listeners",1,24,1,8,function(v) signalListeners=v end)
-A.addButton(page,"START #11 SERVER SIGNAL STORM",function() send("START","SIGNAL_STORM",{fires=signalFires,listeners=signalListeners}) end)
-
-A.addSection(page,"SERVER REDLINE MIX",
-    "The mixed preset combines bounded Heartbeat CPU time, spatial queries, replicated property changes and instance churn. It is the closest recoverable server-side analogue to a continuous 'everything feels frozen/behind' condition because low server heartbeat increases latency for all connected clients.")
-A.addButton(page,"START #12 MIXED REDLINE",function()
-    send("START","MIXED_REDLINE",{ms=math.min(cpuMs,10),queries=math.min(queryCount,1200),props=math.min(replicationCount,450),churn=math.min(churnCount,40)})
-end,true)
-
-A.addButton(page,"STOP SERVER STRESS",function() send("STOP") end)
-A.addButton(page,"PANIC: STOP + DELETE TEST RUNTIME",function() send("PANIC") end,true)
-
-A.toggleStops["server_stress_controller_cleanup"]=function()
-    if statusConn then pcall(function() statusConn:Disconnect() end); statusConn=nil end
-end
-
-A.setStatus("V14.4 LAG loaded: server-only stress controller; local stress removed.")
-print("[FTAP V14.4 LAG] READY")
+A.setStatus("V14R LAG loaded: original V14 exact families + lifecycle/transform/payload research tests.")
+print("[FTAP V14R LAG] READY")

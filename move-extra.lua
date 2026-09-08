@@ -1,4 +1,4 @@
--- FTAP V14.1 MOVE / AUTO SLOT PACK
+-- FTAP V14R MOVE / AUTO SLOT - ORIGINAL V14 + RESEARCH CASINO FIX
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local UserInputService=game:GetService("UserInputService")
@@ -26,6 +26,7 @@ A.addSection(page,"AUTO SLOT MACHINE SPIN",
 local slotCooldown=900
 local slotGap=0.35
 local slotNext={}
+local slotAllowUnknown=true
 
 local function slotAncestor(part)
     local n=part
@@ -109,7 +110,8 @@ local function isBrightRed(part)
         if machine and machine:GetAttribute(names[i])==true then return true end
     end
 
-    return false
+    -- nil = no authoritative/visual readiness signal was found.
+    return nil
 end
 
 local function interactionCandidates(entry)
@@ -202,7 +204,9 @@ local function spinSlot(entry,forceNow)
     local now=os.clock()
     local nextTime=slotNext[handle] or 0
     if not forceNow and now<nextTime then return false,"cooldown" end
-    if not forceNow and not isBrightRed(handle) then return false,"not ready" end
+    local ready=isBrightRed(handle)
+    if not forceNow and ready==false then return false,"not ready" end
+    if not forceNow and ready==nil and not slotAllowUnknown then return false,"readiness unknown" end
 
     local before=slotSnapshot(entry)
     local saved=root.CFrame
@@ -256,6 +260,14 @@ A.addSlider(page,"Delay between slot machines",0.10,2.00,0.05,0.35,function(v)
     slotGap=v
 end)
 
+A.addToggle(page,"slot_unknown_ready","Slot: try when readiness is unknown",function()
+    slotAllowUnknown=true
+    return true
+end,function()
+    slotAllowUnknown=false
+end)
+A.forceToggle("slot_unknown_ready",true)
+
 A.addButton(page,"RUN Scan Slot Machines",function()
     local list=findSlotHandles()
     A.setStatus("Slot handles found="..tostring(#list))
@@ -308,127 +320,6 @@ A.addToggle(page,"auto_slot","AUTO SLOT / CASINO SPIN",function()
 
     return true
 end,function() end)
-
--- ============================================================
--- SELF-ONLY SPIN / STUCK - RESPAWN SAFE
--- ============================================================
-
-A.addSection(page,"SELF SPIN / STUCK (SELF ONLY)",
-    "PreSimulation-based self controls. They reacquire LocalPlayer's new character/root after respawn instead of holding stale references.")
-
-local selfSpinX=0
-local selfSpinY=2800
-local selfSpinZ=0
-local selfLockCFrame=nil
-local selfLockCharacter=nil
-
-A.addSlider(page,"Self spin angular X",-6000,6000,100,0,function(v) selfSpinX=v end)
-A.addSlider(page,"Self spin angular Y",-6000,6000,100,2800,function(v) selfSpinY=v end)
-A.addSlider(page,"Self spin angular Z",-6000,6000,100,0,function(v) selfSpinZ=v end)
-
-local function restoreSelfMotion()
-    local _,hum,root=A.getCharacter()
-    if hum then
-        pcall(function()
-            hum.PlatformStand=false
-            hum.Sit=false
-            hum.AutoRotate=true
-            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        end)
-    end
-    if root then
-        pcall(function()
-            root.AssemblyLinearVelocity=Vector3.zero
-            root.AssemblyAngularVelocity=Vector3.zero
-        end)
-    end
-end
-
-A.addToggle(page,"self_spin","SELF Spin MAX",function()
-    task.spawn(function()
-        while A.toggleState["self_spin"] do
-            local _,hum,root=A.getCharacter()
-            if root then
-                pcall(function()
-                    if hum then hum.AutoRotate=false end
-                    root.AssemblyAngularVelocity=Vector3.new(selfSpinX,selfSpinY,selfSpinZ)
-                end)
-            end
-            RunService.PreSimulation:Wait()
-        end
-    end)
-    return true
-end,function()
-    restoreSelfMotion()
-end)
-
-A.addToggle(page,"self_stuck","SELF Hard Stuck / position lock",function()
-    selfLockCFrame=nil
-    selfLockCharacter=nil
-    task.spawn(function()
-        while A.toggleState["self_stuck"] do
-            local c,hum,root=A.getCharacter()
-            if c and hum and root then
-                -- New character after reset = new anchor. This is what makes the
-                -- self-only stuck loop survive respawns without stale Instance refs.
-                if c~=selfLockCharacter or selfLockCFrame==nil then
-                    selfLockCharacter=c
-                    selfLockCFrame=root.CFrame
-                end
-                pcall(function()
-                    hum.PlatformStand=true
-                    hum.Sit=true
-                    hum.AutoRotate=false
-                    root.AssemblyLinearVelocity=Vector3.zero
-                    root.AssemblyAngularVelocity=Vector3.zero
-                    root.CFrame=selfLockCFrame
-                end)
-            end
-            RunService.PreSimulation:Wait()
-        end
-    end)
-    return true
-end,function()
-    selfLockCFrame=nil
-    selfLockCharacter=nil
-    restoreSelfMotion()
-end)
-
-A.addButton(page,"RECENTER Self Hard Stuck",function()
-    local c,_,root=A.getCharacter()
-    if c and root then
-        selfLockCharacter=c
-        selfLockCFrame=root.CFrame
-        A.setStatus("Self hard-stuck anchor recentered.")
-    else
-        A.setStatus("Self hard-stuck recenter: character/root missing.")
-    end
-end)
-
-local selfRespawnConn=LP.CharacterAdded:Connect(function()
-    selfLockCFrame=nil
-    selfLockCharacter=nil
-    if A.toggleState["self_spin"] or A.toggleState["self_stuck"] then
-        task.spawn(function()
-            local start=os.clock()
-            repeat
-                task.wait(0.05)
-                local c,hum,root=A.getCharacter()
-                if c and hum and root then
-                    A.setStatus("Self spin/stuck rebound to respawned character.")
-                    return
-                end
-            until os.clock()-start>8
-        end)
-    end
-end)
-
-A.toggleStops["move_self_restore"]=function()
-    selfLockCFrame=nil
-    selfLockCharacter=nil
-    restoreSelfMotion()
-    if selfRespawnConn then pcall(function() selfRespawnConn:Disconnect() end); selfRespawnConn=nil end
-end
 
 -- ============================================================
 -- MOVEMENT (kept)
@@ -539,5 +430,5 @@ A.addButton(page,"RUN Teleport behind target",function()
     end
 end)
 
-A.setStatus("V14.1 MOVE loaded: confirmed casino spin + self-only spin/stuck.")
-print("[FTAP V14.1 MOVE] READY")
+A.setStatus("V14R MOVE loaded: original movement + confirmed casino interaction logic.")
+print("[FTAP V14R MOVE] READY")

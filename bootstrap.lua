@@ -1,4 +1,4 @@
--- FTAP V14.4 REMOTE BOOTSTRAP
+-- FTAP V14R REMOTE BOOTSTRAP
 -- Replace BASE once after hosting. Packs then load automatically.
 local BASE="https://raw.githubusercontent.com/blottotle/ftap-v12-loader/main/"
 local files={"core.lua","shared.lua","antis.lua","blob-gucci.lua","line-lag.lua","grab-mods.lua","move-extra.lua","results-debug.lua"}
@@ -10,4 +10,4 @@ for _,f in ipairs(files) do
     assert(fn,"compile failed: "..f.." | "..tostring(err))
     fn()
 end
-print("[FTAP V14.4 BOOTSTRAP] all packs loaded")
+print("[FTAP V14R BOOTSTRAP] all packs loaded")
