@@ -1,0 +1,28 @@
+{
+  "baseline": "FTAP V14 original",
+  "place_id_lock": false,
+  "principles": [
+    "preserve original V14 working mechanisms",
+    "do not replace server-affecting tests with client-only substitutes",
+    "one control per distinct workload",
+    "instrument before tuning intensity"
+  ],
+  "new_candidates": [
+    {"id":"NET-CACHE","evidence":"plag.luau 2026-09-02","priority":1},
+    {"id":"OWN-TOPOLOGY","evidence":"FTAP sticky/ownership sources + Roblox ownership/assembly docs","priority":1},
+    {"id":"WAKE-CONSTRAINT","evidence":"Roblox sleep-system docs","priority":1},
+    {"id":"REPL-TREE","evidence":"Roblox performance docs + FTAP toy-tree patterns","priority":1},
+    {"id":"JOINT-CHURN","evidence":"StickyPart/joint sources + Roblox assemblies docs","priority":2},
+    {"id":"NET-SHAPE","evidence":"packet-source variability + Roblox remote guidance","priority":2},
+    {"id":"REPL-TWEEN","evidence":"Roblox performance docs","priority":2},
+    {"id":"NPC-STATE","evidence":"FTAP ragdoll/state sources","priority":3}
+  ],
+  "blob_debug": [
+    "Left/Right detector matrix",
+    "CreatureGrab/Drop/Release presence",
+    "character generation tracking",
+    "blob generation tracking",
+    "state acknowledgement",
+    "replacement/reacquisition logging"
+  ]
+}
