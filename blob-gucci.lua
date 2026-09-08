@@ -1,4 +1,4 @@
--- FTAP V14.1 BLOB / GUCCI - VOVANGE-ONLY CLEANUP
+-- FTAP V14.2 BLOB / GUCCI - VOVANGE RETAINED + SELF BLOB RESPAWN LAB
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local Workspace=game:GetService("Workspace")
@@ -179,6 +179,8 @@ end
 local function runVovangeHard(toggleKey)
     local ctx,why=kickContext()
     if not ctx then A.setStatus("VOVANGE preflight: "..tostring(why)); return false end
+    local initialTargetCharacter=ctx.target.Character
+    local initialLocalCharacter=LP.Character
     local saved=ctx.blobRoot.CFrame
     local dragging=false
     local grabStart=0
@@ -186,6 +188,20 @@ local function runVovangeHard(toggleKey)
     local lockPos=saved*CFrame.new(0,23,0)
 
     while A.toggleState[toggleKey] do
+        -- Do not carry stale Blob/target state across a respawn. A target reset
+        -- creates a new Character assembly and requires a fresh preflight.
+        if ctx.target.Character~=initialTargetCharacter then
+            A.toggleState[toggleKey]=false
+            if A.renderToggle then A.renderToggle(toggleKey) end
+            A.setStatus("VOVANGE stopped: target reset/respawn detected; fresh preflight required.")
+            break
+        end
+        if LP.Character~=initialLocalCharacter then
+            A.toggleState[toggleKey]=false
+            if A.renderToggle then A.renderToggle(toggleKey) end
+            A.setStatus("VOVANGE stopped: your character reset; remount Blob and preflight again.")
+            break
+        end
         local tr=ctx.target.Character and ctx.target.Character:FindFirstChild("HumanoidRootPart")
         local th=ctx.target.Character and ctx.target.Character:FindFirstChildOfClass("Humanoid")
         if not tr or not th or th.Health<=0 then RunService.Heartbeat:Wait() else
@@ -242,6 +258,105 @@ A.addButton(page,"BLOB KICK PREFLIGHT",function()
     A.setStatus("PASS: seated Blob + RightDetector/Weld + SNO/Create/DestroyGrabLine + target Humanoid")
 end)
 
+
+-- ============================================================
+-- SELF-ONLY BLOB SPIN / LOCK
+-- ============================================================
+A.addSection(page,"SELF BLOB - RESPAWN SAFE",
+    "Only acts on the Blobman you are currently seated on. The loop reacquires your mounted Blob every frame, so stale Blob references do not survive a reset.")
+
+local selfBlobSpinY=3200
+local selfBlobLift=2
+local selfBlobLock=false
+local selfBlobLockCF=nil
+local selfBlobLockCharacter=nil
+
+A.addSlider(page,"Self Blob angular Y",-8000,8000,100,3200,function(v) selfBlobSpinY=v end)
+A.addSlider(page,"Self Blob lock lift",-5,15,1,2,function(v) selfBlobLift=v end)
+
+A.addToggle(page,"self_blob_spin","SELF Blob spin MAX",function()
+    task.spawn(function()
+        while A.toggleState["self_blob_spin"] do
+            local b=S.mountedBlob()
+            local br=S.blobRoot(b)
+            if br then
+                pcall(function()
+                    br.AssemblyAngularVelocity=Vector3.new(0,selfBlobSpinY,0)
+                end)
+            end
+            RunService.PreSimulation:Wait()
+        end
+    end)
+    return true
+end,function()
+    local b=S.mountedBlob()
+    local br=S.blobRoot(b)
+    if br then pcall(function() br.AssemblyAngularVelocity=Vector3.zero end) end
+end)
+
+A.addToggle(page,"self_blob_lock","SELF Blob hard-position lock",function()
+    selfBlobLockCF=nil
+    selfBlobLockCharacter=nil
+    task.spawn(function()
+        while A.toggleState["self_blob_lock"] do
+            local c,_,root=A.getCharacter()
+            local b=S.mountedBlob()
+            local br=S.blobRoot(b)
+            if c and root and br then
+                if c~=selfBlobLockCharacter or selfBlobLockCF==nil then
+                    selfBlobLockCharacter=c
+                    selfBlobLockCF=root.CFrame*CFrame.new(0,selfBlobLift,0)
+                end
+                pcall(function()
+                    br.AssemblyLinearVelocity=Vector3.zero
+                    br.AssemblyAngularVelocity=Vector3.zero
+                    br.CFrame=selfBlobLockCF
+                end)
+            end
+            RunService.PreSimulation:Wait()
+        end
+    end)
+    return true
+end,function()
+    selfBlobLockCF=nil
+    selfBlobLockCharacter=nil
+end)
+
+A.addButton(page,"RECENTER Self Blob lock",function()
+    local c,_,root=A.getCharacter()
+    local b=S.mountedBlob()
+    local br=S.blobRoot(b)
+    if c and root and br then
+        selfBlobLockCharacter=c
+        selfBlobLockCF=root.CFrame*CFrame.new(0,selfBlobLift,0)
+        A.setStatus("Self Blob lock recentered.")
+    else
+        A.setStatus("Self Blob recenter: mount a Blob first.")
+    end
+end)
+
+local selfBlobRespawnConn=LP.CharacterAdded:Connect(function()
+    selfBlobLockCF=nil
+    selfBlobLockCharacter=nil
+    if A.toggleState["self_blob_spin"] or A.toggleState["self_blob_lock"] then
+        A.setStatus("Respawn detected: self Blob loop is waiting for your next mounted Blob.")
+    end
+end)
+
+A.toggleStops["blob_self_restore"]=function()
+    selfBlobLockCF=nil
+    selfBlobLockCharacter=nil
+    if selfBlobRespawnConn then pcall(function() selfBlobRespawnConn:Disconnect() end); selfBlobRespawnConn=nil end
+    local b=S.mountedBlob()
+    local br=S.blobRoot(b)
+    if br then
+        pcall(function()
+            br.AssemblyLinearVelocity=Vector3.zero
+            br.AssemblyAngularVelocity=Vector3.zero
+        end)
+    end
+end
+
 -- Foreign Blob Gucci remains experimental because public Gucci sources normally spawn/own their own Blob.
 local gucci=A.makePage("GUCCI")
 A.addSection(gucci,"FOREIGN BLOB GUCCI",
@@ -271,5 +386,5 @@ A.addToggle(gucci,"gucci_foreign","Foreign Blob AutoGucci",function()
     return true
 end,function() end)
 
-A.setStatus("V14.1 BLOB loaded: Vovange-only kick cleanup + Gucci utilities.")
-print("[FTAP V14.1 BLOB] READY")
+A.setStatus("V14.2 BLOB loaded: Vovange retained + respawn-safe self Blob controls.")
+print("[FTAP V14.2 BLOB] READY")

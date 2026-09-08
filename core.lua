@@ -28,7 +28,7 @@ end
 local API = {}
 ENV.FTAPV10 = API
 
-API.version = "14.0-source-rebuild"
+API.version = "14.2-localstress-respawn"
 API.packs = {}
 API.toggleState = {}
 API.toggleBusy = {}
@@ -799,5 +799,5 @@ end
 close.Activated:Connect(API.shutdown)
 
 API.showPage("CORE")
-setStatus("V10 CORE loaded. Run EXECUTION TEST, then execute feature pack files.")
+setStatus("V14.2 CORE loaded. Run EXECUTION TEST, then execute feature pack files.")
 print("[FTAP V14 CORE] READY")

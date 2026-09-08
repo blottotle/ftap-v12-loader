@@ -310,57 +310,125 @@ A.addToggle(page,"auto_slot","AUTO SLOT / CASINO SPIN",function()
 end,function() end)
 
 -- ============================================================
--- SELF-ONLY SPIN / STUCK
+-- SELF-ONLY SPIN / STUCK - RESPAWN SAFE
 -- ============================================================
 
 A.addSection(page,"SELF SPIN / STUCK (SELF ONLY)",
-    "These controls only modify your own character. They do not target another player.")
+    "PreSimulation-based self controls. They reacquire LocalPlayer's new character/root after respawn instead of holding stale references.")
 
-local selfSpin=1200
-A.addSlider(page,"Self spin angular Y",0,2500,25,1200,function(v) selfSpin=v end)
+local selfSpinX=0
+local selfSpinY=2800
+local selfSpinZ=0
+local selfLockCFrame=nil
+local selfLockCharacter=nil
 
-A.addToggle(page,"self_spin","SELF Spin stronger",function()
-    task.spawn(function()
-        while A.toggleState["self_spin"] do
-            local _,_,root=A.getCharacter()
-            if root then
-                pcall(function() root.AssemblyAngularVelocity=Vector3.new(0,selfSpin,0) end)
-            end
-            RunService.Heartbeat:Wait()
-        end
-    end)
-    return true
-end,function()
-    local _,_,root=A.getCharacter()
-    if root then pcall(function() root.AssemblyAngularVelocity=Vector3.zero end) end
-end)
+A.addSlider(page,"Self spin angular X",-6000,6000,100,0,function(v) selfSpinX=v end)
+A.addSlider(page,"Self spin angular Y",-6000,6000,100,2800,function(v) selfSpinY=v end)
+A.addSlider(page,"Self spin angular Z",-6000,6000,100,0,function(v) selfSpinZ=v end)
 
-A.addToggle(page,"self_stuck","SELF Stuck stronger",function()
-    task.spawn(function()
-        while A.toggleState["self_stuck"] do
-            local _,hum,root=A.getCharacter()
-            if hum and root then
-                pcall(function()
-                    hum.PlatformStand=true
-                    hum.Sit=true
-                    root.AssemblyLinearVelocity=Vector3.zero
-                end)
-            end
-            RunService.Heartbeat:Wait()
-        end
-    end)
-    return true
-end,function()
+local function restoreSelfMotion()
     local _,hum,root=A.getCharacter()
     if hum then
         pcall(function()
             hum.PlatformStand=false
             hum.Sit=false
+            hum.AutoRotate=true
             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
         end)
     end
-    if root then pcall(function() root.AssemblyLinearVelocity=Vector3.zero end) end
+    if root then
+        pcall(function()
+            root.AssemblyLinearVelocity=Vector3.zero
+            root.AssemblyAngularVelocity=Vector3.zero
+        end)
+    end
+end
+
+A.addToggle(page,"self_spin","SELF Spin MAX",function()
+    task.spawn(function()
+        while A.toggleState["self_spin"] do
+            local _,hum,root=A.getCharacter()
+            if root then
+                pcall(function()
+                    if hum then hum.AutoRotate=false end
+                    root.AssemblyAngularVelocity=Vector3.new(selfSpinX,selfSpinY,selfSpinZ)
+                end)
+            end
+            RunService.PreSimulation:Wait()
+        end
+    end)
+    return true
+end,function()
+    restoreSelfMotion()
 end)
+
+A.addToggle(page,"self_stuck","SELF Hard Stuck / position lock",function()
+    selfLockCFrame=nil
+    selfLockCharacter=nil
+    task.spawn(function()
+        while A.toggleState["self_stuck"] do
+            local c,hum,root=A.getCharacter()
+            if c and hum and root then
+                -- New character after reset = new anchor. This is what makes the
+                -- self-only stuck loop survive respawns without stale Instance refs.
+                if c~=selfLockCharacter or selfLockCFrame==nil then
+                    selfLockCharacter=c
+                    selfLockCFrame=root.CFrame
+                end
+                pcall(function()
+                    hum.PlatformStand=true
+                    hum.Sit=true
+                    hum.AutoRotate=false
+                    root.AssemblyLinearVelocity=Vector3.zero
+                    root.AssemblyAngularVelocity=Vector3.zero
+                    root.CFrame=selfLockCFrame
+                end)
+            end
+            RunService.PreSimulation:Wait()
+        end
+    end)
+    return true
+end,function()
+    selfLockCFrame=nil
+    selfLockCharacter=nil
+    restoreSelfMotion()
+end)
+
+A.addButton(page,"RECENTER Self Hard Stuck",function()
+    local c,_,root=A.getCharacter()
+    if c and root then
+        selfLockCharacter=c
+        selfLockCFrame=root.CFrame
+        A.setStatus("Self hard-stuck anchor recentered.")
+    else
+        A.setStatus("Self hard-stuck recenter: character/root missing.")
+    end
+end)
+
+local selfRespawnConn=LP.CharacterAdded:Connect(function()
+    selfLockCFrame=nil
+    selfLockCharacter=nil
+    if A.toggleState["self_spin"] or A.toggleState["self_stuck"] then
+        task.spawn(function()
+            local start=os.clock()
+            repeat
+                task.wait(0.05)
+                local c,hum,root=A.getCharacter()
+                if c and hum and root then
+                    A.setStatus("Self spin/stuck rebound to respawned character.")
+                    return
+                end
+            until os.clock()-start>8
+        end)
+    end
+end)
+
+A.toggleStops["move_self_restore"]=function()
+    selfLockCFrame=nil
+    selfLockCharacter=nil
+    restoreSelfMotion()
+    if selfRespawnConn then pcall(function() selfRespawnConn:Disconnect() end); selfRespawnConn=nil end
+end
 
 -- ============================================================
 -- MOVEMENT (kept)
