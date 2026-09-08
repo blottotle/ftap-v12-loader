@@ -1,4 +1,4 @@
--- FTAP V14 MOVE / AUTO SLOT PACK
+-- FTAP V14.1 MOVE / AUTO SLOT PACK
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local UserInputService=game:GetService("UserInputService")
@@ -21,7 +21,7 @@ local page=A.makePage("MOVE/SLOT")
 -- ============================================================
 
 A.addSection(page,"AUTO SLOT MACHINE SPIN",
-    "FTAP slot machines activate by touching the handle when ready. V13 scans handles, uses executor interaction helpers if available, otherwise physically touches them.")
+    "V14.1 binds interaction to the detected handle, checks readiness more strictly, and only commits the long cooldown after an observable machine/handle state change.")
 
 local slotCooldown=900
 local slotGap=0.35
@@ -101,8 +101,93 @@ local function isBrightRed(part)
         end
     end
 
-    -- Some replicas omit/rename the indicator. Do not block the attempt.
-    return true
+    local names={"Ready","CanSpin","Available","Enabled","Active"}
+    for i=1,#names do
+        local v=part:GetAttribute(names[i])
+        if v==true then return true end
+        local machine=slotAncestor(part)
+        if machine and machine:GetAttribute(names[i])==true then return true end
+    end
+
+    return false
+end
+
+local function interactionCandidates(entry)
+    local handle=entry and entry.handle
+    local machine=entry and entry.machine
+    local out={}
+    local seen={}
+    if not handle then return out end
+
+    local function add(x)
+        if x and not seen[x] and (x:IsA("ClickDetector") or x:IsA("ProximityPrompt")) then
+            seen[x]=true
+            out[#out+1]=x
+        end
+    end
+
+    local d=handle:GetDescendants()
+    local i
+    for i=1,#d do add(d[i]) end
+
+    if machine then
+        d=machine:GetDescendants()
+        for i=1,#d do
+            local x=d[i]
+            if x:IsA("ClickDetector") or x:IsA("ProximityPrompt") then
+                local parent=x.Parent
+                local near=false
+                if parent and parent:IsA("BasePart") then
+                    near=(parent.Position-handle.Position).Magnitude<=8
+                end
+                local n=string.lower(parent and parent.Name or x.Name)
+                local named=string.find(n,"handle",1,true) or string.find(n,"lever",1,true) or string.find(n,"spin",1,true) or string.find(n,"button",1,true)
+                if near or named then add(x) end
+            end
+        end
+    end
+    return out
+end
+
+local function slotSnapshot(entry)
+    local handle=entry and entry.handle
+    local machine=entry and entry.machine
+    if not handle or not handle.Parent then return nil end
+    local snap={
+        color=handle.Color,
+        cf=handle.CFrame,
+        ready=isBrightRed(handle),
+        attrs={}
+    }
+    local names={"Ready","CanSpin","Available","Enabled","Active","Busy","Spinning"}
+    local i
+    for i=1,#names do
+        local k=names[i]
+        local hv=handle:GetAttribute(k)
+        local mv=machine and machine:GetAttribute(k) or nil
+        snap.attrs[k]=tostring(hv).."|"..tostring(mv)
+    end
+    return snap
+end
+
+local function slotChanged(a,b)
+    if not a or not b then return false end
+    if a.ready~=b.ready then return true end
+    if math.abs(a.color.R-b.color.R)+math.abs(a.color.G-b.color.G)+math.abs(a.color.B-b.color.B)>0.03 then return true end
+    if (a.cf.Position-b.cf.Position).Magnitude>0.03 then return true end
+    local k,v
+    for k,v in pairs(a.attrs) do if b.attrs[k]~=v then return true end end
+    return false
+end
+
+local function fireSlotCandidate(x)
+    if x:IsA("ProximityPrompt") and type(fireproximityprompt)=="function" then
+        return pcall(function() fireproximityprompt(x) end)
+    end
+    if x:IsA("ClickDetector") and type(fireclickdetector)=="function" then
+        return pcall(function() fireclickdetector(x) end)
+    end
+    return false
 end
 
 local function spinSlot(entry,forceNow)
@@ -116,21 +201,18 @@ local function spinSlot(entry,forceNow)
 
     local now=os.clock()
     local nextTime=slotNext[handle] or 0
+    if not forceNow and now<nextTime then return false,"cooldown" end
+    if not forceNow and not isBrightRed(handle) then return false,"not ready" end
 
-    if not forceNow and now<nextTime then
-        return false,"cooldown"
-    end
-
-    if not forceNow and not isBrightRed(handle) then
-        return false,"not ready"
-    end
-
+    local before=slotSnapshot(entry)
     local saved=root.CFrame
-    local used=false
+    local attempted=0
+    local candidates=interactionCandidates(entry)
+    local i
 
-    -- Try prompt/click/touch executor APIs first.
-    local ok=select(1,S.tryInteract(root,machine))
-    used=ok
+    for i=1,#candidates do
+        if fireSlotCandidate(candidates[i]) then attempted=attempted+1 end
+    end
 
     if type(firetouchinterest)=="function" then
         local touchOk=pcall(function()
@@ -138,24 +220,32 @@ local function spinSlot(entry,forceNow)
             task.wait(0.05)
             firetouchinterest(root,handle,1)
         end)
-
-        if touchOk then used=true end
+        if touchOk then attempted=attempted+1 end
     end
 
-    -- Physical touch fallback; does not require manual mouse input.
     pcall(function()
         root.CFrame=handle.CFrame
-        root.AssemblyLinearVelocity=Vector3.new(0,0,0)
+        root.AssemblyLinearVelocity=Vector3.zero
     end)
-
     task.wait(0.12)
+    pcall(function() root.CFrame=saved end)
 
-    pcall(function()
-        root.CFrame=saved
-    end)
+    local changed=false
+    local deadline=os.clock()+1.5
+    repeat
+        task.wait(0.05)
+        local after=slotSnapshot(entry)
+        changed=slotChanged(before,after)
+    until changed or os.clock()>=deadline or not handle.Parent
 
-    slotNext[handle]=os.clock()+slotCooldown
-    return true,used and "API+touch" or "physical touch"
+    if changed then
+        slotNext[handle]=os.clock()+slotCooldown
+        return true,"confirmed state change; candidates="..tostring(#candidates).." attempts="..tostring(attempted)
+    end
+
+    -- Failed/unconfirmed attempts get only a short backoff, not the long casino cooldown.
+    slotNext[handle]=os.clock()+2
+    return false,"unconfirmed; candidates="..tostring(#candidates).." attempts="..tostring(attempted)
 end
 
 A.addSlider(page,"Slot per-machine cooldown sec",30,900,30,900,function(v)
@@ -171,18 +261,27 @@ A.addButton(page,"RUN Scan Slot Machines",function()
     A.setStatus("Slot handles found="..tostring(#list))
 end)
 
+A.addButton(page,"RUN Slot interaction diagnostic",function()
+    local list=findSlotHandles()
+    local total=0
+    local i
+    for i=1,#list do total=total+#interactionCandidates(list[i]) end
+    A.setStatus("Slot diagnostic: handles="..tostring(#list).." scoped prompt/click candidates="..tostring(total))
+end)
+
 A.addButton(page,"RUN Spin every Slot once NOW",function()
     task.spawn(function()
         local list=findSlotHandles()
         local i,done=0,0
+        local failed=0
 
         for i=1,#list do
             local ok=spinSlot(list[i],true)
-            if ok then done=done+1 end
+            if ok then done=done+1 else failed=failed+1 end
             task.wait(slotGap)
         end
 
-        A.setStatus("Forced slot cycle: "..tostring(done).."/"..tostring(#list))
+        A.setStatus("Forced slot cycle confirmed="..tostring(done).." failed/unconfirmed="..tostring(failed).." total="..tostring(#list))
     end)
 end)
 
@@ -209,6 +308,59 @@ A.addToggle(page,"auto_slot","AUTO SLOT / CASINO SPIN",function()
 
     return true
 end,function() end)
+
+-- ============================================================
+-- SELF-ONLY SPIN / STUCK
+-- ============================================================
+
+A.addSection(page,"SELF SPIN / STUCK (SELF ONLY)",
+    "These controls only modify your own character. They do not target another player.")
+
+local selfSpin=1200
+A.addSlider(page,"Self spin angular Y",0,2500,25,1200,function(v) selfSpin=v end)
+
+A.addToggle(page,"self_spin","SELF Spin stronger",function()
+    task.spawn(function()
+        while A.toggleState["self_spin"] do
+            local _,_,root=A.getCharacter()
+            if root then
+                pcall(function() root.AssemblyAngularVelocity=Vector3.new(0,selfSpin,0) end)
+            end
+            RunService.Heartbeat:Wait()
+        end
+    end)
+    return true
+end,function()
+    local _,_,root=A.getCharacter()
+    if root then pcall(function() root.AssemblyAngularVelocity=Vector3.zero end) end
+end)
+
+A.addToggle(page,"self_stuck","SELF Stuck stronger",function()
+    task.spawn(function()
+        while A.toggleState["self_stuck"] do
+            local _,hum,root=A.getCharacter()
+            if hum and root then
+                pcall(function()
+                    hum.PlatformStand=true
+                    hum.Sit=true
+                    root.AssemblyLinearVelocity=Vector3.zero
+                end)
+            end
+            RunService.Heartbeat:Wait()
+        end
+    end)
+    return true
+end,function()
+    local _,hum,root=A.getCharacter()
+    if hum then
+        pcall(function()
+            hum.PlatformStand=false
+            hum.Sit=false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end)
+    end
+    if root then pcall(function() root.AssemblyLinearVelocity=Vector3.zero end) end
+end)
 
 -- ============================================================
 -- MOVEMENT (kept)
@@ -319,5 +471,5 @@ A.addButton(page,"RUN Teleport behind target",function()
     end
 end)
 
-A.setStatus("V13 MOVE loaded. AUTO SPIN now means SLOT/CASINO SPIN.")
-print("[FTAP V14 MOVE] READY")
+A.setStatus("V14.1 MOVE loaded: confirmed casino spin + self-only spin/stuck.")
+print("[FTAP V14.1 MOVE] READY")

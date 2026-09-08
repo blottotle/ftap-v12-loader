@@ -1,4 +1,4 @@
--- FTAP V14 BLOB / GUCCI - SOURCE EXACT REBUILD
+-- FTAP V14.1 BLOB / GUCCI - VOVANGE-ONLY CLEANUP
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local Workspace=game:GetService("Workspace")
@@ -131,8 +131,8 @@ A.addToggle(page,"auto_foreign","AUTO FOREIGN BLOB",function()
     return true
 end,function() end)
 
-A.addSection(page,"BLOB KICK SOURCE MATRIX",
-    "A=TheWorst Aug-2026 plugin. B=Vovange hard lock. C=Vovange SpinGrab orbit. These use ONE-ARG CreatureDrop in kick phase.")
+A.addSection(page,"BLOB KICK - VOVANGE ONLY",
+    "Legacy TheWorst / SpinGrab / generic Critcl kick controls were removed. This retains the existing VOVange hard path you reported as working.")
 
 A.addSlider(page,"Extra Blob angular spin",0,1200,25,0,function(v) extraSpin=v end)
 
@@ -176,100 +176,9 @@ local function clearExtraSpin(ctx)
     end
 end
 
-local function theWorstAcquire(ctx)
-    local br=ctx.blobRoot
-    local tr=ctx.tRoot
-    br.CFrame=tr.CFrame
-    br.Velocity=Vector3.zero
-    S.fire3(ctx.cg,ctx.rd,tr,ctx.rw)
-    S.fire4(ctx.refs.CreateGrabLine,tr,Vector3.zero,tr.Position,false)
-
-    local st=os.clock()
-    while os.clock()-st<0.7 and tr.Parent do
-        S.fire2(ctx.refs.SetNetworkOwner,tr,tr.CFrame)
-        applyExtraSpin(ctx)
-        RunService.Heartbeat:Wait()
-    end
-
-    br.CFrame=ctx.saved
-    br.Velocity=Vector3.zero
-
-    st=os.clock()
-    while os.clock()-st<0.7 and tr.Parent do
-        S.fire2(ctx.refs.SetNetworkOwner,tr,tr.CFrame)
-        applyExtraSpin(ctx)
-        RunService.Heartbeat:Wait()
-    end
-end
-
-local function theWorstStep(ctx)
-    local tr=ctx.target.Character and ctx.target.Character:FindFirstChild("HumanoidRootPart")
-    local th=ctx.target.Character and ctx.target.Character:FindFirstChildOfClass("Humanoid")
-    if not tr or not th or th.Health<=0 then return false end
-    ctx.tRoot=tr
-    ctx.tHum=th
-
-    ctx.blobRoot.CFrame=ctx.saved
-    ctx.blobRoot.Velocity=Vector3.zero
-    applyExtraSpin(ctx)
-
-    tr.CFrame=ctx.lock
-    tr.Velocity=Vector3.zero
-    tr.RotVelocity=Vector3.zero
-    pcall(function()
-        tr.AssemblyLinearVelocity=Vector3.zero
-        tr.AssemblyAngularVelocity=Vector3.zero
-    end)
-
-    S.fire2(ctx.refs.SetNetworkOwner,tr,ctx.lock)
-    ctx.packet=ctx.packet+1
-
-    if ctx.packet>=2 then
-        ctx.packet=0
-        th.PlatformStand=true
-        th.Sit=true
-        S.blobDropOne(ctx.blob,"Right")
-        S.fire1(ctx.refs.DestroyGrabLine,tr)
-        S.fire3(ctx.cg,ctx.rd,tr,ctx.rw)
-        S.fire4(ctx.refs.CreateGrabLine,tr,Vector3.zero,tr.Position,false)
-    end
-    return true
-end
-
-local function runTheWorst(seconds,toggleKey)
-    local ctx,why=kickContext()
-    if not ctx then A.setStatus("Kick A preflight: "..tostring(why)); return false end
-    ctx.saved=ctx.blobRoot.CFrame
-    ctx.lock=ctx.saved*CFrame.new(0,19,0)
-    ctx.packet=0
-    theWorstAcquire(ctx)
-
-    local st=os.clock()
-    while (toggleKey and A.toggleState[toggleKey]) or (not toggleKey and os.clock()-st<seconds) do
-        if not theWorstStep(ctx) then break end
-        RunService.Heartbeat:Wait()
-    end
-
-    pcall(function()
-        ctx.blobRoot.CFrame=ctx.saved
-        ctx.blobRoot.Velocity=Vector3.zero
-    end)
-    clearExtraSpin(ctx)
-    return true
-end
-
-A.addButton(page,"RUN Kick A - THEWORST EXACT 2s",function()
-    task.spawn(function() runTheWorst(2,nil) end)
-end,true)
-
-A.addToggle(page,"kick_a_loop","LOOP Kick A - THEWORST EXACT",function()
-    task.spawn(function() runTheWorst(0,"kick_a_loop") end)
-    return true
-end,function() end)
-
 local function runVovangeHard(toggleKey)
     local ctx,why=kickContext()
-    if not ctx then A.setStatus("Kick B preflight: "..tostring(why)); return false end
+    if not ctx then A.setStatus("VOVANGE preflight: "..tostring(why)); return false end
     local saved=ctx.blobRoot.CFrame
     local dragging=false
     local grabStart=0
@@ -322,91 +231,8 @@ local function runVovangeHard(toggleKey)
     clearExtraSpin(ctx)
 end
 
-A.addToggle(page,"kick_b_loop","LOOP Kick B - VOVANGE HARD",function()
+A.addToggle(page,"kick_b_loop","LOOP VOVANGE BLOB - HARD",function()
     task.spawn(function() runVovangeHard("kick_b_loop") end)
-    return true
-end,function() end)
-
-local function runSpinGrab(toggleKey)
-    local ctx,why=kickContext()
-    if not ctx then A.setStatus("Kick C preflight: "..tostring(why)); return false end
-    local saved=nil
-    local dragging=false
-    local grabStart=0
-    local orbit=0
-    local lastRemote=0
-    local lockedPos=nil
-
-    while A.toggleState[toggleKey] do
-        local tr=ctx.target.Character and ctx.target.Character:FindFirstChild("HumanoidRootPart")
-        local th=ctx.target.Character and ctx.target.Character:FindFirstChildOfClass("Humanoid")
-        local tc=ctx.target.Character
-        if not tr or not th or not tc or th.Health<=0 then RunService.Heartbeat:Wait() else
-            tr.Velocity=Vector3.zero
-            if not dragging then
-                if grabStart==0 then grabStart=os.clock(); saved=ctx.blobRoot.CFrame end
-                ctx.blobRoot.CFrame=tr.CFrame
-                ctx.blobRoot.Velocity=Vector3.zero
-                if os.clock()-lastRemote>=0.002 then
-                    lastRemote=os.clock()
-                    th.PlatformStand=true
-                    th.Sit=true
-                    S.fire2(ctx.refs.SetNetworkOwner,tr,ctx.blobRoot.CFrame)
-                    S.fire1(ctx.refs.DestroyGrabLine,tr)
-                end
-                if os.clock()-grabStart>0.35 then
-                    dragging=true
-                    grabStart=0
-                    orbit=0
-                    local pcld=nil
-                    local kids=tc:GetChildren()
-                    local i
-                    for i=1,#kids do
-                        if kids[i]:IsA("BasePart") and string.lower(kids[i].Name)=="playercharacterlocationdetector" then
-                            pcld=kids[i]
-                            break
-                        end
-                    end
-                    lockedPos=pcld and pcld.Position or tr.Position
-                    ctx.blobRoot.CFrame=saved
-                    ctx.blobRoot.Velocity=Vector3.zero
-                    S.blobDropOne(ctx.blob,"Right")
-                    S.fire3(ctx.cg,ctx.rd,tr,ctx.rw)
-                end
-                RunService.Heartbeat:Wait()
-            else
-                local dt=RunService.Heartbeat:Wait()
-                orbit=orbit+30*dt
-                local base=lockedPos or tr.Position
-                local rayParams=RaycastParams.new()
-                rayParams.FilterType=Enum.RaycastFilterType.Exclude
-                rayParams.FilterDescendantsInstances={tc,LP.Character,ctx.blob}
-                local hit=Workspace:Raycast(base+Vector3.new(0,5,0),Vector3.new(0,-50,0),rayParams)
-                local gy=hit and hit.Position.Y or base.Y
-                local center=Vector3.new(base.X,gy+6,base.Z)
-                local pos=center+Vector3.new(math.cos(orbit)*30,0,math.sin(orbit)*30)
-                ctx.blobRoot.CFrame=CFrame.lookAt(pos,center)
-                ctx.blobRoot.Velocity=Vector3.zero
-                th.PlatformStand=true
-                th.Sit=true
-
-                if os.clock()-lastRemote>=0.002 then
-                    lastRemote=os.clock()
-                    local tcf=CFrame.new(base)*tr.CFrame.Rotation
-                    S.fire2(ctx.refs.SetNetworkOwner,tr,tcf)
-                    S.fire1(ctx.refs.DestroyGrabLine,tr)
-                    S.blobDropOne(ctx.blob,"Right")
-                    S.fire3(ctx.cg,ctx.rd,tr,ctx.rw)
-                end
-            end
-        end
-    end
-
-    if saved then pcall(function() ctx.blobRoot.CFrame=saved; ctx.blobRoot.Velocity=Vector3.zero end) end
-end
-
-A.addToggle(page,"kick_c_loop","LOOP Kick C - VOVANGE SPIN GRAB",function()
-    task.spawn(function() runSpinGrab("kick_c_loop") end)
     return true
 end,function() end)
 
@@ -415,27 +241,6 @@ A.addButton(page,"BLOB KICK PREFLIGHT",function()
     if not ctx then return A.setStatus("FAIL: "..tostring(why)) end
     A.setStatus("PASS: seated Blob + RightDetector/Weld + SNO/Create/DestroyGrabLine + target Humanoid")
 end)
-
-A.addSection(page,"CRITCL GENERIC LOOP (2-ARG DROP)",nil)
-A.addToggle(page,"critcl_loop","CRITCL grab/drop/silent loop",function()
-    task.spawn(function()
-        while A.toggleState["critcl_loop"] do
-            local b=S.mountedBlob()
-            local p,tr=A.currentTarget()
-            if b and p and tr then
-                S.blobGrab(b,tr,"Left",false)
-                task.wait(0.05)
-                S.blobDropTwo(b,tr,"Left")
-                task.wait(0.05)
-                S.blobGrab(b,tr,"Left",true)
-                task.wait(6.25)
-            else
-                task.wait(0.1)
-            end
-        end
-    end)
-    return true
-end,function() end)
 
 -- Foreign Blob Gucci remains experimental because public Gucci sources normally spawn/own their own Blob.
 local gucci=A.makePage("GUCCI")
@@ -466,5 +271,5 @@ A.addToggle(gucci,"gucci_foreign","Foreign Blob AutoGucci",function()
     return true
 end,function() end)
 
-A.setStatus("V14 BLOB loaded: exact TheWorst/Vovange kick families.")
-print("[FTAP V14 BLOB] READY")
+A.setStatus("V14.1 BLOB loaded: Vovange-only kick cleanup + Gucci utilities.")
+print("[FTAP V14.1 BLOB] READY")

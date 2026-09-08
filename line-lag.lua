@@ -1,243 +1,186 @@
--- FTAP V14 LAG - SOURCE EXACT REBUILD
+-- FTAP V14.1 LAG / LINE RESEARCH-INFORMED SAFE DIAGNOSTICS
+-- The recent source families are categorized here, but destructive remote-spam
+-- loops are intentionally not executed. The local render test only affects this client.
 local Players=game:GetService("Players")
-local RunService=game:GetService("RunService")
 local Workspace=game:GetService("Workspace")
+local RunService=game:GetService("RunService")
 local LP=Players.LocalPlayer
 
 local ENV=_G
 if type(getgenv)=="function" then pcall(function() ENV=getgenv() end) end
 local A=ENV.FTAPV10
-if not A or not A.shared then warn("[FTAP V14 LAG] core+shared first"); return end
+if not A or not A.shared then warn("[FTAP V14.1 LAG] core+shared first"); return end
 if A.packs["LAG"] then return end
 A.registerPack("LAG")
 
 local S=A.shared
 local page=A.makePage("LAG")
 
-A.addSection(page,"LINE LAG SOURCE MATRIX",
-    "A=Vovange SpawnLocation x250. B=Defiant/Critcl every player's Torso x400. Both call GrabEvents.CreateGrabLine with TWO args.")
+local function fullName(x)
+    if not x then return "missing" end
+    local ok,name=pcall(function() return x:GetFullName() end)
+    return ok and name or tostring(x.Name)
+end
 
-local lineA=250
-local lineB=400
+local function charRoot(p)
+    local c=p and p.Character
+    return c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso")) or nil
+end
 
-A.addSlider(page,"Line A count",50,1000,10,250,function(v) lineA=v end)
-A.addToggle(page,"line_vovange","Line Lag A - VOVANGE EXACT",function()
+A.addSection(page,"LINE VARIANTS - 2025/2026 RESEARCH",
+    "Subcategory: fixed-anchor, player fan-out, outlier-transform, lifecycle churn, and payload amplification. This build inspects prerequisites/signatures without firing lag/kick traffic.")
+
+A.addButton(page,"CHECK Fixed-anchor line variant",function()
     local refs=S.getRefs()
     local spawn=Workspace:FindFirstChild("SpawnLocation")
-    if not refs.CreateGrabLine then A.setStatus("CreateGrabLine missing."); return false end
-    if not spawn or not spawn:IsA("BasePart") then A.setStatus("workspace.SpawnLocation missing."); return false end
-
-    task.spawn(function()
-        while A.toggleState["line_vovange"] do
-            local i
-            for i=1,lineA do
-                if not A.toggleState["line_vovange"] then break end
-                S.fire2(refs.CreateGrabLine,spawn,spawn.CFrame)
-            end
-            task.wait(1)
-        end
-    end)
-    return true
-end,function() end)
-
-A.addSlider(page,"Line B lines",50,1000,10,400,function(v) lineB=v end)
-A.addToggle(page,"line_defiant","Line Lag B - DEFIANT/CRITCL EXACT",function()
-    local refs=S.getRefs()
-    if not refs.CreateGrabLine then A.setStatus("CreateGrabLine missing."); return false end
-
-    task.spawn(function()
-        while A.toggleState["line_defiant"] do
-            local a,i
-            local ps=Players:GetPlayers()
-            for a=0,lineB do
-                if not A.toggleState["line_defiant"] then break end
-                for i=1,#ps do
-                    local p=ps[i]
-                    local c=p.Character
-                    local part=c and (c:FindFirstChild("Torso") or c:FindFirstChild("HumanoidRootPart"))
-                    if part then
-                        S.fire2(refs.CreateGrabLine,part,part.CFrame)
-                    end
-                end
-            end
-            task.wait(1)
-        end
-    end)
-    return true
-end,function() end)
-
-A.addSection(page,"PACKET / PING LAG SOURCE MATRIX",
-    "Multiple leaked hubs agree this remote is GrabEvents.ExtendGrabLine. No manual remote-name guess anymore.")
-
-local packetA=30000
-local packetB=3000
-local packetC=20
-
-A.addSlider(page,"Packet A emoji count",30000,350000,10000,30000,function(v) packetA=v end)
-A.addToggle(page,"packet_vovange","Packet Lag A - VOVANGE EXACT",function()
-    local refs=S.getRefs()
-    if not refs.ExtendGrabLine then A.setStatus("ExtendGrabLine missing."); return false end
-    task.spawn(function()
-        while A.toggleState["packet_vovange"] do
-            local payload=string.rep("😂",packetA)
-            S.fire1(refs.ExtendGrabLine,payload)
-            task.wait(0.1)
-        end
-    end)
-    return true
-end,function() end)
-
-A.addSlider(page,"Packet B Balls repetitions",500,5000,100,3000,function(v) packetB=v end)
-A.addToggle(page,"packet_defiant","Packet Lag B - DEFIANT EXACT",function()
-    local refs=S.getRefs()
-    if not refs.ExtendGrabLine then A.setStatus("ExtendGrabLine missing."); return false end
-    task.spawn(function()
-        while A.toggleState["packet_defiant"] do
-            S.fire1(refs.ExtendGrabLine,string.rep("Balls Balls Balls Balls",packetB))
-            task.wait()
-        end
-    end)
-    return true
-end,function() end)
-
-A.addSlider(page,"Packet C strength",1,100,1,20,function(v) packetC=v end)
-A.addToggle(page,"packet_polar","Packet Lag C - POLAR EXACT FAMILY",function()
-    local refs=S.getRefs()
-    if not refs.ExtendGrabLine then A.setStatus("ExtendGrabLine missing."); return false end
-    task.spawn(function()
-        while A.toggleState["packet_polar"] do
-            S.fire1(refs.ExtendGrabLine,string.rep("😂😂😂😂🤣🤣🤣🤣",100*packetC))
-            task.wait(1)
-        end
-    end)
-    return true
-end,function() end)
-
-A.addSection(page,"SHURIKEN FPS / PHYSICS LAG",
-    "Exact Defiant/Critcl family. V14 fixes the previous bug by searching your PlotItems folder as well as SpawnedInToys.")
-
-local decoyCount=2
-local shurCount=16
-local shurBodies={}
-
-A.addSlider(page,"Setup decoys",1,4,1,2,function(v) decoyCount=v end)
-A.addSlider(page,"Setup shurikens",8,32,1,16,function(v) shurCount=v end)
-
-A.addButton(page,"RUN Setup Shuriken-lag toys",function()
-    local c,h,r=A.getCharacter()
-    if not r then return A.setStatus("Root missing.") end
-    local i
-    for i=1,decoyCount do
-        S.spawnToy("NpcRobloxianMascot",r.CFrame*CFrame.new(i*3,0,-8),Vector3.zero)
-        task.wait(0.1)
-    end
-    for i=1,shurCount do
-        S.spawnToy("NinjaShuriken",r.CFrame*CFrame.new(0,4,-4),Vector3.zero)
-        task.wait(0.03)
-    end
-    local fs=S.describeToyFolders()
-    A.setStatus("Toy setup requested. folders="..table.concat(fs," | "))
+    A.setStatus(
+        "fixed-anchor: CreateGrabLine="..tostring(refs.CreateGrabLine~=nil)..
+        " spawn="..tostring(spawn~=nil)..
+        " remote="..fullName(refs.CreateGrabLine)
+    )
 end)
 
-A.addToggle(page,"fps_shuriken","FPS Lag - DEFIANT SHURIKEN EXACT",function()
-    local decoys=S.findOwnToys("NpcRobloxianMascot")
-    local shurs=S.findOwnToys("NinjaShuriken")
-    if #decoys==0 or #shurs==0 then
-        A.setStatus("Need owned decoy + shuriken. Press Setup first.")
-        return false
-    end
-
-    shurBodies={}
-    local di
-    for di=1,#decoys do
-        local dr=decoys[di]:FindFirstChild("HumanoidRootPart")
-        if dr then
-            local startIndex=(di-1)*8+1
-            local endIndex=math.min(startIndex+7,#shurs)
-            local si
-            for si=startIndex,endIndex do
-                local sh=shurs[si]
-                local sticky=sh and sh:FindFirstChild("StickyPart",true)
-                if sticky and sticky:IsA("BasePart") then
-                    sticky.CanTouch=true
-
-                    local dd=decoys[di]:GetDescendants()
-                    local k
-                    for k=1,#dd do if dd[k]:IsA("BasePart") then dd[k].CanCollide=false end end
-
-                    local bp=Instance.new("BodyPosition")
-                    bp.Name="FTAPV14LagBP"
-                    bp.MaxForce=Vector3.new(math.huge,math.huge,math.huge)
-                    bp.P=10000
-                    bp.D=500
-                    bp.Parent=sticky
-
-                    local sd=sh:GetDescendants()
-                    for k=1,#sd do if sd[k]:IsA("BasePart") then sd[k].CanCollide=false end end
-
-                    local kids=sticky:GetChildren()
-                    for k=1,#kids do
-                        if kids[k].Name=="TouchInterest" then pcall(function() kids[k]:Destroy() end) end
-                    end
-
-                    shurBodies[#shurBodies+1]={sticky=sticky,bp=bp,decoy=dr}
-                end
-            end
-        end
-    end
-
-    if #shurBodies==0 then
-        A.setStatus("No usable StickyPart/decoy pairs.")
-        return false
-    end
-
-    task.spawn(function()
-        while A.toggleState["fps_shuriken"] do
-            local i
-            for i=1,#shurBodies do
-                local x=shurBodies[i]
-                if x.sticky.Parent and x.bp.Parent and x.decoy.Parent then
-                    x.sticky.AssemblyAngularVelocity=Vector3.new(
-                        math.random(-100,100)*50,
-                        math.random(-100,100)*50,
-                        math.random(-100,100)*50
-                    )
-                    x.bp.Position=Vector3.new(x.decoy.Position.X,x.decoy.Position.Y-4,x.decoy.Position.Z)
-                end
-            end
-            task.wait(0.0001)
-            for i=1,#shurBodies do
-                local x=shurBodies[i]
-                if x.bp.Parent and x.decoy.Parent then
-                    x.bp.Position=Vector3.new(x.decoy.Position.X,x.decoy.Position.Y+3,x.decoy.Position.Z)
-                end
-            end
-            task.wait(0.0001)
-        end
-    end)
-
-    A.setStatus("Defiant Shuriken lag pairs="..tostring(#shurBodies))
-    return true
-end,function()
+A.addButton(page,"CHECK Player fan-out line variant",function()
+    local refs=S.getRefs()
+    local ps=Players:GetPlayers()
+    local roots=0
     local i
-    for i=1,#shurBodies do
-        if shurBodies[i].bp then pcall(function() shurBodies[i].bp:Destroy() end) end
-    end
-    shurBodies={}
+    for i=1,#ps do if charRoot(ps[i]) then roots=roots+1 end end
+    A.setStatus(
+        "fan-out: CreateGrabLine="..tostring(refs.CreateGrabLine~=nil)..
+        " liveRoots="..tostring(roots).."/"..tostring(#ps)..
+        " (diagnostic only)"
+    )
 end)
+
+A.addButton(page,"CHECK Outlier-transform line variant",function()
+    local refs=S.getRefs()
+    local _,_,root=A.getCharacter()
+    local finite=root and root.Position.X==root.Position.X and root.Position.Magnitude<1e8
+    A.setStatus(
+        "outlier-transform: CreateGrabLine="..tostring(refs.CreateGrabLine~=nil)..
+        " localRootFinite="..tostring(finite==true)..
+        " | no extreme transform sent"
+    )
+end)
+
+A.addButton(page,"CHECK Line lifecycle-churn variant",function()
+    local refs=S.getRefs()
+    A.setStatus(
+        "lifecycle: Create="..tostring(refs.CreateGrabLine~=nil)..
+        " Destroy="..tostring(refs.DestroyGrabLine~=nil)..
+        " | create/destroy churn disabled in this build"
+    )
+end)
+
+A.addButton(page,"CHECK Payload-amplification variant",function()
+    local refs=S.getRefs()
+    A.setStatus(
+        "payload: ExtendGrabLine="..tostring(refs.ExtendGrabLine~=nil)..
+        " remote="..fullName(refs.ExtendGrabLine)..
+        " | oversized payload firing disabled"
+    )
+end)
+
+A.addSection(page,"LOCAL-ONLY LINE RENDER STRESS",
+    "Models the client-side cost of many visible lines without RemoteEvents, server replication, or other-player effects. Objects are parented under CurrentCamera and auto-cleaned.")
+
+local localLineCount=250
+local localLineSeconds=2
+local stressFolder=nil
+local stressRunning=false
+
+A.addSlider(page,"Local lines",25,1000,25,250,function(v) localLineCount=v end)
+A.addSlider(page,"Local stress seconds",1,10,1,2,function(v) localLineSeconds=v end)
+
+local function clearStress()
+    stressRunning=false
+    if stressFolder then
+        pcall(function() stressFolder:Destroy() end)
+        stressFolder=nil
+    end
+end
+
+A.addButton(page,"RUN Local-only line render test",function()
+    if stressRunning then return A.setStatus("Local line test already running.") end
+    local cam=Workspace.CurrentCamera
+    local _,_,root=A.getCharacter()
+    if not cam or not root then return A.setStatus("Camera/root missing.") end
+
+    clearStress()
+    stressRunning=true
+    local folder=Instance.new("Folder")
+    folder.Name="FTAP_LocalLineStress"
+    folder.Parent=cam
+    stressFolder=folder
+
+    local origin=Instance.new("Part")
+    origin.Name="Origin"
+    origin.Anchored=true
+    origin.CanCollide=false
+    origin.CanTouch=false
+    origin.CanQuery=false
+    origin.Transparency=1
+    origin.Size=Vector3.new(0.2,0.2,0.2)
+    origin.CFrame=root.CFrame
+    origin.Parent=folder
+
+    local a0=Instance.new("Attachment")
+    a0.Parent=origin
+
+    local i
+    for i=1,localLineCount do
+        local endpoint=Instance.new("Part")
+        endpoint.Name="P"..tostring(i)
+        endpoint.Anchored=true
+        endpoint.CanCollide=false
+        endpoint.CanTouch=false
+        endpoint.CanQuery=false
+        endpoint.Transparency=1
+        endpoint.Size=Vector3.new(0.15,0.15,0.15)
+        local ang=(i/localLineCount)*math.pi*2
+        local radius=10+(i%11)
+        endpoint.Position=root.Position+Vector3.new(math.cos(ang)*radius,(i%9)-4,math.sin(ang)*radius)
+        endpoint.Parent=folder
+
+        local a1=Instance.new("Attachment")
+        a1.Parent=endpoint
+        local beam=Instance.new("Beam")
+        beam.Attachment0=a0
+        beam.Attachment1=a1
+        beam.FaceCamera=true
+        beam.Width0=0.03
+        beam.Width1=0.03
+        beam.Parent=folder
+    end
+
+    A.setStatus("Local-only line test active: "..tostring(localLineCount).." lines / "..tostring(localLineSeconds).."s")
+    task.spawn(function()
+        local untilTime=os.clock()+localLineSeconds
+        while stressRunning and os.clock()<untilTime and folder.Parent do
+            local t=os.clock()
+            origin.CFrame=CFrame.new(root.Position+Vector3.new(0,2+math.sin(t*5)*0.5,0))
+            RunService.RenderStepped:Wait()
+        end
+        clearStress()
+        A.setStatus("Local-only line test finished and cleaned up.")
+    end)
+end)
+
+A.addButton(page,"STOP/CLEAN Local line test",clearStress)
 
 A.addSection(page,"LAG PREFLIGHT",nil)
 A.addButton(page,"RUN LAG PREFLIGHT",function()
     local refs=S.getRefs()
     local spawn=Workspace:FindFirstChild("SpawnLocation")
-    local fs=S.ownToyFolders()
     A.setStatus(
         "CreateGrabLine="..tostring(refs.CreateGrabLine~=nil)..
+        " DestroyGrabLine="..tostring(refs.DestroyGrabLine~=nil)..
         " ExtendGrabLine="..tostring(refs.ExtendGrabLine~=nil)..
         " SpawnLocation="..tostring(spawn~=nil)..
-        " toyFolders="..tostring(#fs)
+        " | remote-spam disabled"
     )
 end)
 
-A.setStatus("V14 LAG loaded: exact CreateGrabLine + ExtendGrabLine leaked-source families.")
-print("[FTAP V14 LAG] READY")
+A.setStatus("V14.1 LAG loaded: recent line families categorized; destructive lag traffic disabled.")
+print("[FTAP V14.1 LAG] READY")
