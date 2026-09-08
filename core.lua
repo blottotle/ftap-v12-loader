@@ -1,4 +1,4 @@
--- FTAP V14 SOURCE REBUILD
+-- FTAP V14.4 SERVER TEST REBUILD
 -- Small compatibility-first GUI shell. Execute this FIRST.
 -- No HTTP/loadstring/debug/getgc/hooks. No PlaceId lock.
 
@@ -204,7 +204,7 @@ title.TextColor3 = COLORS.TEXT
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
-title.Text = "FTAP V14 SOURCE REBUILD"
+title.Text = "FTAP V14.4 SERVER TEST REBUILD"
 
 local subtitle = Instance.new("TextLabel")
 subtitle.Parent = top
@@ -799,5 +799,5 @@ end
 close.Activated:Connect(API.shutdown)
 
 API.showPage("CORE")
-setStatus("V14.2 CORE loaded. Run EXECUTION TEST, then execute feature pack files.")
+setStatus("V14.3 CORE loaded. Run EXECUTION TEST, then execute feature pack files.")
 print("[FTAP V14 CORE] READY")
