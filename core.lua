@@ -1,16 +1,6 @@
 -- FTAP V14 SOURCE REBUILD
 -- Small compatibility-first GUI shell. Execute this FIRST.
--- No HTTP/loadstring/debug/getgc/hooks.
--- Exact-place safety gate: configure with CONFIGURE_PLACE.sh before use.
-local FTAP_ALLOWED_PLACE_ID=0 -- FTAP_PLACE_LOCK
-local FTAP_LOCK_ENV=_G
-if type(getgenv)=="function" then pcall(function() FTAP_LOCK_ENV=getgenv() end) end
-if FTAP_ALLOWED_PLACE_ID<=0 or game.PlaceId~=FTAP_ALLOWED_PLACE_ID then
-    -- Clear a stale prior-session API so later packs cannot attach to an old unlocked core.
-    if type(FTAP_LOCK_ENV)=="table" then FTAP_LOCK_ENV.FTAPV10=nil end
-    warn("[FTAP V14R] PLACE LOCK: configure the exact game.PlaceId first (current="..tostring(game.PlaceId)..")")
-    return
-end
+-- No HTTP/loadstring/debug/getgc/hooks. No PlaceId lock.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

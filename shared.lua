@@ -1,4 +1,4 @@
--- FTAP V14 SHARED
+-- FTAP V14R2 SHARED - ORIGINAL CALL SEMANTICS + DEBUG2 OBSERVER
 local Players=game:GetService("Players")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Workspace=game:GetService("Workspace")
@@ -21,26 +21,21 @@ function S.pathOf(x)
     return x.Name
 end
 
-function S.fire0(r)
+local function observedRemoteCall(r,args)
     if not r or not r:IsA("RemoteEvent") then return false end
-    return pcall(function() r:FireServer() end)
+    local started=os.clock()
+    local ok,err=pcall(function() r:FireServer(unpack(args)) end)
+    if type(A.debug2ObserveRemote)=="function" then
+        pcall(A.debug2ObserveRemote,r,args,ok,err,os.clock()-started,"FireServer")
+    end
+    return ok,err
 end
-function S.fire1(r,a)
-    if not r or not r:IsA("RemoteEvent") then return false end
-    return pcall(function() r:FireServer(a) end)
-end
-function S.fire2(r,a,b)
-    if not r or not r:IsA("RemoteEvent") then return false end
-    return pcall(function() r:FireServer(a,b) end)
-end
-function S.fire3(r,a,b,c)
-    if not r or not r:IsA("RemoteEvent") then return false end
-    return pcall(function() r:FireServer(a,b,c) end)
-end
-function S.fire4(r,a,b,c,d)
-    if not r or not r:IsA("RemoteEvent") then return false end
-    return pcall(function() r:FireServer(a,b,c,d) end)
-end
+
+function S.fire0(r) return observedRemoteCall(r,{}) end
+function S.fire1(r,a) return observedRemoteCall(r,{a}) end
+function S.fire2(r,a,b) return observedRemoteCall(r,{a,b}) end
+function S.fire3(r,a,b,c) return observedRemoteCall(r,{a,b,c}) end
+function S.fire4(r,a,b,c,d) return observedRemoteCall(r,{a,b,c,d}) end
 
 function S.findRemoteContains(words,excludes)
     local d=ReplicatedStorage:GetDescendants()
@@ -213,9 +208,14 @@ function S.spawnToy(name,cf,rot)
     local r=S.getRefs()
     if not r.SpawnToy or not r.SpawnToy:IsA("RemoteFunction") then return false,nil end
     local before=S.findOwnToys(name)
-    local ok=pcall(function()
-        r.SpawnToy:InvokeServer(name,cf,rot or Vector3.new(0,0,0))
+    local args={name,cf,rot or Vector3.new(0,0,0)}
+    local started=os.clock()
+    local ok,err=pcall(function()
+        r.SpawnToy:InvokeServer(unpack(args))
     end)
+    if type(A.debug2ObserveRemote)=="function" then
+        pcall(A.debug2ObserveRemote,r.SpawnToy,args,ok,err,os.clock()-started,"InvokeServer")
+    end
     if not ok then return false,nil end
     local toy=S.waitNewToy(name,before,2)
     return toy~=nil,toy
