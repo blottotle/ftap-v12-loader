@@ -374,5 +374,244 @@ end,function()
     if s then pcall(function() s.Disabled=false end) end
 end)
 
-A.setStatus("V14 ANTIS loaded: source-exact AntiGrab/AntiKick families.")
-print("[FTAP V14 ANTIS] READY")
+
+A.addSection(page,"ANTI GUCCI / FREEZE DEFENCE",
+    "Defensive hub controls. Recent Gucci code repeatedly forces ragdoll while seated; recent freeze-like packet code uses sustained ExtendGrabLine traffic. These controls protect/observe your local client without changing the old loader.")
+
+local antiGucciConnections={}
+local antiGucciStats={foreignBlobEjects=0,cameraRestores=0,packetAlerts=0,lineAlerts=0,ragdollRepairs=0}
+local antiFreezeQuietUntil=0
+local antiFreezeBeamWasDisabled=nil
+local antiFreezeEventTimes={}
+local antiFreezeByteThreshold=8192
+local antiFreezeRateThreshold=80
+local antiFreezeLastSource="unknown"
+
+local function antiGucciDisconnectAll()
+    for i=1,#antiGucciConnections do
+        pcall(function() antiGucciConnections[i]:Disconnect() end)
+    end
+    antiGucciConnections={}
+end
+
+local function ownToyFolderName()
+    return LP.Name.."SpawnedInToys"
+end
+
+local function isForeignBlobSeat(seat)
+    if not seat then return false,nil end
+    local blob=seat:FindFirstAncestor("CreatureBlobman")
+    if not blob then return false,nil end
+    local folder=blob.Parent
+    local foreign=(not folder) or folder.Name~=ownToyFolderName()
+    return foreign,blob
+end
+
+local function repairLocalRagdoll(c,h,root)
+    if not c or not h or not root then return end
+    disableRagdollJoints(c)
+    pcall(function()
+        h.PlatformStand=false
+        h.AutoRotate=true
+        h.Sit=false
+        root.AssemblyLinearVelocity=Vector3.zero
+        root.AssemblyAngularVelocity=Vector3.zero
+    end)
+    antiGucciStats.ragdollRepairs=antiGucciStats.ragdollRepairs+1
+end
+
+local function restoreCameraToHumanoid()
+    local cam=Workspace.CurrentCamera
+    local c,h=A.getCharacter()
+    if not cam or not h then return end
+    local subject=cam.CameraSubject
+    if subject and subject~=h then
+        local underBlob=false
+        pcall(function()
+            underBlob=subject:FindFirstAncestor("CreatureBlobman")~=nil
+        end)
+        if underBlob or (h.SeatPart and h.SeatPart:FindFirstAncestor("CreatureBlobman")) then
+            pcall(function() cam.CameraSubject=h end)
+            antiGucciStats.cameraRestores=antiGucciStats.cameraRestores+1
+        end
+    end
+end
+
+local function setCharacterBeamDisabled(v)
+    local ps=LP:FindFirstChild("PlayerScripts")
+    local beam=ps and ps:FindFirstChild("CharacterAndBeamMove")
+    if not beam then return false end
+    pcall(function() beam.Disabled=v end)
+    return true
+end
+
+local function triggerFreezeShield(reason)
+    antiFreezeQuietUntil=os.clock()+3.0
+    setCharacterBeamDisabled(true)
+    A.setStatus("ANTI FREEZE triggered: "..tostring(reason).." source="..tostring(antiFreezeLastSource).."; CharacterAndBeamMove disabled")
+end
+
+local function resolvePossibleSource(args)
+    for i=1,#args do
+        local v=args[i]
+        if typeof(v)=="Instance" then
+            if v:IsA("Player") then return v.Name end
+            local model=v:IsA("Model") and v or v:FindFirstAncestorOfClass("Model")
+            local plr=model and Players:GetPlayerFromCharacter(model)
+            if plr then return plr.Name end
+        end
+    end
+    return "unknown"
+end
+
+A.addToggle(page,"anti_gucci_all","Anti Gucci - ALL LOCAL DEFENCES",function()
+    antiGucciDisconnectAll()
+    local function setupCharacter(c)
+        if not c then return end
+        local h=c:FindFirstChildOfClass("Humanoid") or c:WaitForChild("Humanoid",5)
+        local root=c:FindFirstChild("HumanoidRootPart") or c:WaitForChild("HumanoidRootPart",5)
+        if not h or not root then return end
+
+        antiGucciConnections[#antiGucciConnections+1]=h:GetPropertyChangedSignal("SeatPart"):Connect(function()
+            if not A.toggleState["anti_gucci_all"] then return end
+            local seat=h.SeatPart
+            local foreign,blob=isForeignBlobSeat(seat)
+            if foreign and blob then
+                antiGucciStats.foreignBlobEjects=antiGucciStats.foreignBlobEjects+1
+                task.defer(function()
+                    repairLocalRagdoll(c,h,root)
+                    pcall(function() h:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+                    restoreCameraToHumanoid()
+                end)
+            end
+        end)
+
+        local rag=h:FindFirstChild("Ragdolled")
+        if rag then
+            antiGucciConnections[#antiGucciConnections+1]=rag.Changed:Connect(function()
+                if not A.toggleState["anti_gucci_all"] then return end
+                local foreign=isForeignBlobSeat(h.SeatPart)
+                if foreign and rag.Value then repairLocalRagdoll(c,h,root) end
+            end)
+        end
+    end
+
+    setupCharacter(LP.Character)
+    antiGucciConnections[#antiGucciConnections+1]=LP.CharacterAdded:Connect(function(c)
+        task.wait(0.15)
+        setupCharacter(c)
+    end)
+
+    antiGucciConnections[#antiGucciConnections+1]=RunService.Heartbeat:Connect(function()
+        if not A.toggleState["anti_gucci_all"] then return end
+        restoreCameraToHumanoid()
+        local c,h,root=A.getCharacter()
+        if c and h and root then
+            local held=LP:FindFirstChild("IsHeld")
+            local head=c:FindFirstChild("Head")
+            local owner=head and head:FindFirstChild("PartOwner")
+            if (held and held.Value) or owner then
+                local refs=S.getRefs()
+                S.fire1(refs.Struggle,LP)
+                repairLocalRagdoll(c,h,root)
+            end
+        end
+    end)
+    A.toggleStops["anti_gucci_all"]=antiGucciDisconnectAll
+    return true
+end,function()
+    antiGucciDisconnectAll()
+end)
+
+A.addToggle(page,"anti_gucci_camera","Anti Gucci - CAMERA/SEAT RECOVERY",function()
+    local conn=RunService.Heartbeat:Connect(function()
+        if A.toggleState["anti_gucci_camera"] then restoreCameraToHumanoid() end
+    end)
+    A.toggleStops["anti_gucci_camera"]=function() pcall(function() conn:Disconnect() end) end
+    return true
+end,function()
+    if A.toggleStops["anti_gucci_camera"] then A.toggleStops["anti_gucci_camera"](); A.toggleStops["anti_gucci_camera"]=nil end
+end)
+
+A.addToggle(page,"anti_freeze_auto","Auto Anti Freeze - PACKET/LINE DETECTOR",function()
+    local refs=S.getRefs()
+    if not refs.ExtendGrabLine then A.setStatus("ExtendGrabLine missing for detector."); return false end
+    local conns={}
+    local function observe(remoteName,...)
+        if not A.toggleState["anti_freeze_auto"] then return end
+        local now=os.clock()
+        local args={...}
+        antiFreezeLastSource=resolvePossibleSource(args)
+        local bytes=0
+        for i=1,#args do if type(args[i])=="string" then bytes=bytes+#args[i] end end
+        antiFreezeEventTimes[#antiFreezeEventTimes+1]=now
+        local cut=now-1
+        local j=1
+        while j<=#antiFreezeEventTimes and antiFreezeEventTimes[j]<cut do j=j+1 end
+        if j>1 then
+            local n={}
+            for k=j,#antiFreezeEventTimes do n[#n+1]=antiFreezeEventTimes[k] end
+            antiFreezeEventTimes=n
+        end
+        local rate=#antiFreezeEventTimes
+        if bytes>=antiFreezeByteThreshold then
+            antiGucciStats.packetAlerts=antiGucciStats.packetAlerts+1
+            triggerFreezeShield(remoteName.." payload="..tostring(bytes).."B")
+        elseif rate>=antiFreezeRateThreshold then
+            antiGucciStats.lineAlerts=antiGucciStats.lineAlerts+1
+            triggerFreezeShield(remoteName.." rate="..tostring(rate).."/s")
+        end
+    end
+    conns[#conns+1]=refs.ExtendGrabLine.OnClientEvent:Connect(function(...) observe("ExtendGrabLine",...) end)
+    if refs.CreateGrabLine then
+        conns[#conns+1]=refs.CreateGrabLine.OnClientEvent:Connect(function(...) observe("CreateGrabLine",...) end)
+    end
+    local hb=RunService.Heartbeat:Connect(function()
+        if not A.toggleState["anti_freeze_auto"] then return end
+        if antiFreezeQuietUntil>0 and os.clock()>antiFreezeQuietUntil then
+            antiFreezeQuietUntil=0
+            if not A.toggleState["anti_lag_exact"] then
+                setCharacterBeamDisabled(false)
+                A.setStatus("ANTI FREEZE quiet window passed; CharacterAndBeamMove restored")
+            else
+                A.setStatus("ANTI FREEZE quiet window passed; manual Anti Lag remains enabled")
+            end
+        end
+    end)
+    A.toggleStops["anti_freeze_auto"]=function()
+        for i=1,#conns do pcall(function() conns[i]:Disconnect() end) end
+        pcall(function() hb:Disconnect() end)
+        antiFreezeEventTimes={}
+        antiFreezeQuietUntil=0
+        if not A.toggleState["anti_lag_exact"] then setCharacterBeamDisabled(false) end
+    end
+    return true
+end,function()
+    if A.toggleStops["anti_freeze_auto"] then A.toggleStops["anti_freeze_auto"](); A.toggleStops["anti_freeze_auto"]=nil end
+end)
+
+A.addSlider(page,"Anti Freeze payload threshold KB",4,128,1,8,function(v) antiFreezeByteThreshold=math.floor(v*1024) end)
+A.addSlider(page,"Anti Freeze event-rate / sec",20,240,5,80,function(v) antiFreezeRateThreshold=v end)
+
+A.addButton(page,"ANTI GUCCI / FREEZE STATUS",function()
+    local c,h,root=A.getCharacter()
+    local seat=h and h.SeatPart
+    local foreign,blob=isForeignBlobSeat(seat)
+    local held=LP:FindFirstChild("IsHeld")
+    local head=c and c:FindFirstChild("Head")
+    local po=head and head:FindFirstChild("PartOwner")
+    A.setStatus(
+        "AntiGucci foreignSeat="..tostring(foreign)..
+        " blob="..tostring(blob and blob:GetFullName() or "nil")..
+        " held="..tostring(held and held.Value or false)..
+        " PartOwner="..tostring(po and po.Value or "nil")..
+        " eject="..antiGucciStats.foreignBlobEjects..
+        " camera="..antiGucciStats.cameraRestores..
+        " packetAlerts="..antiGucciStats.packetAlerts..
+        " rateAlerts="..antiGucciStats.lineAlerts..
+        " source="..tostring(antiFreezeLastSource)
+    )
+end)
+
+A.setStatus("V14R3 ANTIS loaded: V14 source families + Anti Gucci + sustained-freeze detector.")
+print("[FTAP V14R3 ANTIS] READY")

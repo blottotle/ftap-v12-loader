@@ -307,6 +307,60 @@ A.addButton(page,"RUN Research variant summary",function()
     A.setStatus("Research map: A=fixed-anchor; B=player fan-out; C=create/destroy lifecycle churn; D=transform argument probe; Packet D=bounded payload-size sweep; FPS=physics saturation.")
 end)
 
+
+A.addSection(page,"OWN-GAME FREEZE REPRO LAB",
+    "Uses only ReplicatedStorage.FTAPFreezeLabControl from the bundled ServerScriptService lab. It does NOT reuse public FTAP lag remotes. Run Studio Start Server + 2 Players or a private server to compare the second client before/after Anti Freeze.")
+
+local freezeLabPayload=4096
+local freezeLabBursts=3
+local freezeLabSeconds=5
+
+local function freezeLabRemote()
+    local rs=game:GetService("ReplicatedStorage")
+    return rs:FindFirstChild("FTAPFreezeLabControl")
+end
+
+A.addSlider(page,"Freeze Lab payload bytes",1024,8192,1024,4096,function(v) freezeLabPayload=v end)
+A.addSlider(page,"Freeze Lab sends / Heartbeat",1,5,1,3,function(v) freezeLabBursts=v end)
+A.addSlider(page,"Freeze Lab duration sec",2,8,1,5,function(v) freezeLabSeconds=v end)
+
+A.addButton(page,"RUN LAB - SUSTAINED NETWORK 5s",function()
+    local r=freezeLabRemote()
+    if not r then return A.setStatus("FTAPFreezeLabControl missing. Install server-lab/FTAPFreezeLab.server.lua in ServerScriptService.") end
+    local payload=string.rep("F",math.min(freezeLabPayload,8192))
+    task.spawn(function()
+        r:FireServer("beginNet",freezeLabSeconds)
+        local stopAt=os.clock()+freezeLabSeconds
+        while os.clock()<stopAt do
+            local i
+            for i=1,freezeLabBursts do r:FireServer("netPulse",payload) end
+            RunService.Heartbeat:Wait()
+        end
+        r:FireServer("stop")
+    end)
+    A.setStatus("Own-game sustained network lab started.")
+end,true)
+
+A.addButton(page,"RUN LAB - SERVER STALL 50ms 5s",function()
+    local r=freezeLabRemote()
+    if not r then return A.setStatus("FTAPFreezeLabControl missing. Install bundled server lab first.") end
+    r:FireServer("stall",50,math.min(freezeLabSeconds,6))
+    A.setStatus("Own-game 50ms/frame server-stall lab requested.")
+end,true)
+
+A.addButton(page,"RUN LAB - MIXED FREEZE-LIKE 5s",function()
+    local r=freezeLabRemote()
+    if not r then return A.setStatus("FTAPFreezeLabControl missing. Install bundled server lab first.") end
+    r:FireServer("mixed",math.min(freezeLabSeconds,6))
+    A.setStatus("Own-game mixed stall+replication lab requested.")
+end,true)
+
+A.addButton(page,"STOP OWN-GAME FREEZE LAB",function()
+    local r=freezeLabRemote()
+    if r then r:FireServer("stop") end
+    A.setStatus("Freeze lab STOP sent.")
+end)
+
 A.addSection(page,"LAG PREFLIGHT",nil)
 A.addButton(page,"RUN LAG PREFLIGHT",function()
     local refs=S.getRefs()
@@ -321,5 +375,5 @@ A.addButton(page,"RUN LAG PREFLIGHT",function()
     )
 end)
 
-A.setStatus("V14R LAG loaded: original V14 exact families + lifecycle/transform/payload research tests.")
-print("[FTAP V14R LAG] READY")
+A.setStatus("V14R3 LAG loaded: original V14 families + research tests + own-game freeze repro controls.")
+print("[FTAP V14R3 LAG] READY")
