@@ -317,7 +317,11 @@ local freezeLabSeconds=5
 
 local function freezeLabRemote()
     local rs=game:GetService("ReplicatedStorage")
-    return rs:FindFirstChild("FTAPFreezeLabControl")
+    return rs:FindFirstChild("FTAPFreezeLabControl") or rs:WaitForChild("FTAPFreezeLabControl",1.5)
+end
+
+local function freezeLabMissing()
+    return A.setStatus("FTAPFreezeLabControl missing: the old client loader cannot create server code. Run server-lab/INSTALL_FREEZE_LAB_STUDIO_COMMAND.lua once in Roblox Studio's Command Bar, then Start Server/private server.")
 end
 
 A.addSlider(page,"Freeze Lab payload bytes",1024,8192,1024,4096,function(v) freezeLabPayload=v end)
@@ -326,7 +330,7 @@ A.addSlider(page,"Freeze Lab duration sec",2,8,1,5,function(v) freezeLabSeconds=
 
 A.addButton(page,"RUN LAB - SUSTAINED NETWORK 5s",function()
     local r=freezeLabRemote()
-    if not r then return A.setStatus("FTAPFreezeLabControl missing. Install server-lab/FTAPFreezeLab.server.lua in ServerScriptService.") end
+    if not r then return freezeLabMissing() end
     local payload=string.rep("F",math.min(freezeLabPayload,8192))
     task.spawn(function()
         r:FireServer("beginNet",freezeLabSeconds)
@@ -343,14 +347,14 @@ end,true)
 
 A.addButton(page,"RUN LAB - SERVER STALL 50ms 5s",function()
     local r=freezeLabRemote()
-    if not r then return A.setStatus("FTAPFreezeLabControl missing. Install bundled server lab first.") end
+    if not r then return freezeLabMissing() end
     r:FireServer("stall",50,math.min(freezeLabSeconds,6))
     A.setStatus("Own-game 50ms/frame server-stall lab requested.")
 end,true)
 
 A.addButton(page,"RUN LAB - MIXED FREEZE-LIKE 5s",function()
     local r=freezeLabRemote()
-    if not r then return A.setStatus("FTAPFreezeLabControl missing. Install bundled server lab first.") end
+    if not r then return freezeLabMissing() end
     r:FireServer("mixed",math.min(freezeLabSeconds,6))
     A.setStatus("Own-game mixed stall+replication lab requested.")
 end,true)
@@ -375,5 +379,5 @@ A.addButton(page,"RUN LAG PREFLIGHT",function()
     )
 end)
 
-A.setStatus("V14R3 LAG loaded: original V14 families + research tests + own-game freeze repro controls.")
-print("[FTAP V14R3 LAG] READY")
+A.setStatus("V14R4 LAG loaded: original V14 families + research tests + own-game freeze repro controls + Studio server-lab installer.")
+print("[FTAP V14R4 LAG] READY")
