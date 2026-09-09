@@ -308,61 +308,64 @@ A.addButton(page,"RUN Research variant summary",function()
 end)
 
 
-A.addSection(page,"OWN-GAME FREEZE REPRO LAB",
-    "Uses only ReplicatedStorage.FTAPFreezeLabControl from the bundled ServerScriptService lab. It does NOT reuse public FTAP lag remotes. Run Studio Start Server + 2 Players or a private server to compare the second client before/after Anti Freeze.")
+A.addSection(page,"FTAP DEFENSIVE REMOTE SURFACE AUDIT",
+    "Safe scan only: this section never fires or invokes a RemoteEvent/RemoteFunction. Presence means attack surface, NOT confirmed vulnerability. Use DEBUG2 + WORKS/PARTIAL/FAIL only during controlled testing in your own game.")
 
-local freezeLabPayload=4096
-local freezeLabBursts=3
-local freezeLabSeconds=5
+local securityAuditRemotes={
+    {"CreateGrabLine","validate BasePart scope + finite CFrame + distance + per-player rate"},
+    {"DestroyGrabLine","validate that the line/part belongs to the requesting player's current grab"},
+    {"ExtendGrabLine","validate payload type/shape/length and cap sustained request rate"},
+    {"SetNetworkOwner","never trust arbitrary instance targets; restrict ownership changes to server-approved assemblies"},
+    {"CreateGrabEvent","validate target eligibility, distance, state and ownership before mutating server state"},
+    {"StickyPartEvent","validate both parts, ownership/proximity and request cadence"},
+    {"SpawnToy","server-side allowlist, cost/cooldown, spawn-distance and per-player object cap"},
+    {"DestroyToy","only destroy objects the server records as owned/eligible for that player"},
+    {"RagdollRemote","self/target permission + state validation; never relay arbitrary target requests"},
+    {"Struggle","self-only state transition + cooldown"},
+    {"StopAllVelocity","scope to server-authorized player/assembly only and rate-limit"}
+}
 
-local function freezeLabRemote()
-    local rs=game:GetService("ReplicatedStorage")
-    return rs:FindFirstChild("FTAPFreezeLabControl") or rs:WaitForChild("FTAPFreezeLabControl",1.5)
+local function auditRemotePath(r)
+    if not r then return "missing" end
+    local ok,name=pcall(function() return r:GetFullName() end)
+    if ok then return name end
+    return tostring(r.Name)
 end
 
-local function freezeLabMissing()
-    return A.setStatus("FTAPFreezeLabControl missing: the old client loader cannot create server code. Run server-lab/INSTALL_FREEZE_LAB_STUDIO_COMMAND.lua once in Roblox Studio's Command Bar, then Start Server/private server.")
-end
-
-A.addSlider(page,"Freeze Lab payload bytes",1024,8192,1024,4096,function(v) freezeLabPayload=v end)
-A.addSlider(page,"Freeze Lab sends / Heartbeat",1,5,1,3,function(v) freezeLabBursts=v end)
-A.addSlider(page,"Freeze Lab duration sec",2,8,1,5,function(v) freezeLabSeconds=v end)
-
-A.addButton(page,"RUN LAB - SUSTAINED NETWORK 5s",function()
-    local r=freezeLabRemote()
-    if not r then return freezeLabMissing() end
-    local payload=string.rep("F",math.min(freezeLabPayload,8192))
-    task.spawn(function()
-        r:FireServer("beginNet",freezeLabSeconds)
-        local stopAt=os.clock()+freezeLabSeconds
-        while os.clock()<stopAt do
-            local i
-            for i=1,freezeLabBursts do r:FireServer("netPulse",payload) end
-            RunService.Heartbeat:Wait()
+A.addButton(page,"RUN SAFE FTAP SURFACE AUDIT",function()
+    local refs=S.getRefs()
+    local present={}
+    local missing={}
+    print("[FTAP SECURITY AUDIT] begin - no remotes are fired")
+    for i=1,#securityAuditRemotes do
+        local key=securityAuditRemotes[i][1]
+        local rule=securityAuditRemotes[i][2]
+        local r=refs[key]
+        if r then
+            present[#present+1]=key
+            print("[FTAP SECURITY AUDIT] EXPOSED "..key.." -> "..auditRemotePath(r).." | server rule: "..rule)
+        else
+            missing[#missing+1]=key
+            print("[FTAP SECURITY AUDIT] ABSENT  "..key)
         end
-        r:FireServer("stop")
-    end)
-    A.setStatus("Own-game sustained network lab started.")
-end,true)
+    end
+    A.setStatus("SAFE AUDIT exposed="..tostring(#present).."/"..tostring(#securityAuditRemotes).." | presence != vulnerable | full report printed to console")
+end)
 
-A.addButton(page,"RUN LAB - SERVER STALL 50ms 5s",function()
-    local r=freezeLabRemote()
-    if not r then return freezeLabMissing() end
-    r:FireServer("stall",50,math.min(freezeLabSeconds,6))
-    A.setStatus("Own-game 50ms/frame server-stall lab requested.")
-end,true)
+A.addButton(page,"PRINT FTAP SERVER HARDENING PLAN",function()
+    print("[FTAP HARDENING] Put validation/rate limiting INSIDE the real server handlers; a second listener cannot cancel another OnServerEvent callback.")
+    for i=1,#securityAuditRemotes do
+        print("[FTAP HARDENING] "..securityAuditRemotes[i][1]..": "..securityAuditRemotes[i][2])
+    end
+    print("[FTAP HARDENING] Also reject NaN/inf numeric components, oversized strings/tables, client-selected arbitrary Instances, stale/dead characters, out-of-range targets and requests that exceed legitimate gameplay cadence.")
+    A.setStatus("Server hardening plan printed. No remote calls were made.")
+end)
 
-A.addButton(page,"RUN LAB - MIXED FREEZE-LIKE 5s",function()
-    local r=freezeLabRemote()
-    if not r then return freezeLabMissing() end
-    r:FireServer("mixed",math.min(freezeLabSeconds,6))
-    A.setStatus("Own-game mixed stall+replication lab requested.")
-end,true)
-
-A.addButton(page,"STOP OWN-GAME FREEZE LAB",function()
-    local r=freezeLabRemote()
-    if r then r:FireServer("stop") end
-    A.setStatus("Freeze lab STOP sent.")
+A.addButton(page,"PRINT PUBLIC-SOURCE TEST MATRIX",function()
+    print("[FTAP TEST MATRIX] Public FTAP script families repeatedly target grab/network-ownership/toy/character remotes. Treat each exposed family as a candidate attack surface, then verify your own handler rejects invalid ownership, distance, payload size and request rate.")
+    print("[FTAP TEST MATRIX] 1 Create/Destroy/Extend grab-line | 2 SetNetworkOwner/grab state | 3 Spawn/Destroy toy | 4 Sticky/ragdoll/struggle | 5 physics/network-owner abuse.")
+    print("[FTAP TEST MATRIX] Use DEBUG2 result labels to record WORKS/PARTIAL/FAIL after bounded tests in your own Studio/private server.")
+    A.setStatus("Public-source defensive matrix printed; no exploit payload executed.")
 end)
 
 A.addSection(page,"LAG PREFLIGHT",nil)
@@ -379,5 +382,5 @@ A.addButton(page,"RUN LAG PREFLIGHT",function()
     )
 end)
 
-A.setStatus("V14R4 LAG loaded: original V14 families + research tests + own-game freeze repro controls + Studio server-lab installer.")
-print("[FTAP V14R4 LAG] READY")
+A.setStatus("V14R5 LAG loaded: original V14 families + research tests + safe defensive remote-surface audit; freeze server lab removed.")
+print("[FTAP V14R5 LAG] READY")

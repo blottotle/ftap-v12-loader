@@ -430,5 +430,73 @@ A.addButton(page,"RUN Teleport behind target",function()
     end
 end)
 
-A.setStatus("V14R MOVE loaded: original movement + confirmed casino interaction logic.")
-print("[FTAP V14R MOVE] READY")
+
+A.addSection(page,"LOCAL FUN / SAFE SANDBOX",
+    "Client-only visual controls. These create no server remotes and do not change other players' server state.")
+
+local localRainbowConn=nil
+local localRainbowHighlight=nil
+local function stopLocalRainbow()
+    if localRainbowConn then pcall(function() localRainbowConn:Disconnect() end); localRainbowConn=nil end
+    if localRainbowHighlight then pcall(function() localRainbowHighlight:Destroy() end); localRainbowHighlight=nil end
+end
+
+A.addToggle(page,"fun_local_rainbow","FUN - Local Rainbow Self",function()
+    stopLocalRainbow()
+    local c=LP.Character
+    if not c then A.setStatus("Character missing."); return false end
+    local h=Instance.new("Highlight")
+    h.Name="FTAPLocalRainbow"
+    h.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+    h.FillTransparency=0.55
+    h.OutlineTransparency=0
+    h.Parent=c
+    localRainbowHighlight=h
+    localRainbowConn=RunService.RenderStepped:Connect(function()
+        if not A.toggleState["fun_local_rainbow"] then return end
+        if not h.Parent then return end
+        local col=Color3.fromHSV((os.clock()*0.18)%1,0.85,1)
+        h.FillColor=col
+        h.OutlineColor=col
+    end)
+    A.toggleStops["fun_local_rainbow"]=stopLocalRainbow
+    return true
+end,function()
+    stopLocalRainbow()
+end)
+
+local fovPulseConn=nil
+local fovBase=nil
+local function stopFovPulse()
+    if fovPulseConn then pcall(function() fovPulseConn:Disconnect() end); fovPulseConn=nil end
+    local cam=Workspace.CurrentCamera
+    if cam and fovBase then pcall(function() cam.FieldOfView=fovBase end) end
+    fovBase=nil
+end
+
+A.addToggle(page,"fun_fov_pulse","FUN - Local FOV Pulse",function()
+    stopFovPulse()
+    local cam=Workspace.CurrentCamera
+    if not cam then A.setStatus("Camera missing."); return false end
+    fovBase=cam.FieldOfView
+    fovPulseConn=RunService.RenderStepped:Connect(function()
+        if not A.toggleState["fun_fov_pulse"] then return end
+        local c=Workspace.CurrentCamera
+        if c and fovBase then c.FieldOfView=fovBase+math.sin(os.clock()*3.0)*8 end
+    end)
+    A.toggleStops["fun_fov_pulse"]=stopFovPulse
+    return true
+end,function()
+    stopFovPulse()
+end)
+
+A.addButton(page,"FUN - Reset Local Visuals",function()
+    stopLocalRainbow()
+    stopFovPulse()
+    A.toggleState["fun_local_rainbow"]=false
+    A.toggleState["fun_fov_pulse"]=false
+    A.setStatus("Local-only fun visuals reset.")
+end)
+
+A.setStatus("V14R5 MOVE loaded: original movement + confirmed casino logic + local-only fun sandbox.")
+print("[FTAP V14R5 MOVE] READY")
